@@ -27,7 +27,7 @@ function header() {
 if [ ${1:-x} = x ]
 then
   echo "${COLOR_YELLOW}Usage: $0 ticket-number"
-  echo 
+  echo
   echo "Tries to automate custom configuration tickets by downloading all attachments"
   echo " and detect any core IDs mentioned in ticket comments.$COLOR_NONE"
   exit 0
@@ -85,14 +85,14 @@ foreach ($result->comments as $cid => $comment) {
   if ($cid == 0) {
     echo "\nFirst comment in ticket: {$comment->created_at}\n" . sep() . wordwrap($comment->body) . "\n" . sep() . "\n";
   }
-  
+
   # Gather attachments
   if ($comment->attachments) {
     foreach ($comment->attachments as $attachment) {
       $attachments[$attachment->file_name] = $attachment->content_url;
     }
   }
-  
+
   # Look for core IDs
   if ($comment->body) {
     $ok = preg_match_all("/[A-Z][A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9][0-9][0-9]*(\.[a-z0][a-z1][a-zA-Z0-9]*\.[a-zA-Z0-9]*|_[a-zA-Z0-9]*|)/", $comment->body, $matches, PREG_SET_ORDER);
@@ -103,7 +103,7 @@ foreach ($result->comments as $cid => $comment) {
       }
     }
   }
-  
+
 }
 
 echo "\nLast comment in ticket: {$comment->created_at}\n" . sep() . wordwrap($comment->body) . "\n" . sep() . "\n";
@@ -115,14 +115,14 @@ echo "\nLast comment in ticket: {$comment->created_at}\n" . sep() . wordwrap($co
 $final_files = array();
 system("mkdir ticketfiles 2>/dev/null");
 foreach ($attachments as $filename => $url) {
-  
+
   if (! preg_match("/.*\.(txt|xml|zip)$/", $filename)) {
     echo "Skipping download of $filename...\n";
     continue;
   }
-  
+
   # TODO: Remove some attachments based on filename extenstion (like .diff?)
-  
+
   # Use L because we need to follow the redirect
   $cmd = "curl -sL $url -o \"ticketfiles/$filename\"";
   $ok = system($cmd);

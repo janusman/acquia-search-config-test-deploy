@@ -7,17 +7,17 @@
 # Requires:
 # * Local Solr instance, with all the necessary solr/lib files
 # * governor-cli tool
-# 
+#
 # The script does this:
 # * Runs basic checks for file format (text, UTF-8-encoding, LF line endings)
-# * Copies the configuration files from the live core and places them into the 
+# * Copies the configuration files from the live core and places them into the
 #   Solr local instance
 # * Places the files under git, to track changes
 # * Copies the new specified files over the configuration, and attempts to start Solr
 # * Reports on any Solr warnings or errors found, and provides a canned response
-# * If successful startup, provides links you can click to upload files onto the 
+# * If successful startup, provides links you can click to upload files onto the
 #   Governor, and checks for the real index's coming back up.
-# * Also provides canned response for successful implementation, including a 
+# * Also provides canned response for successful implementation, including a
 #   .diff between previous and new config
 #
 # TODO
@@ -27,17 +27,15 @@
 # * Run governor.phar and check it it's asking for creds, and if so direct to https://cci.acquia.com/node/4491726 for instructions
 
 # Constants #########################
-BASE_DIR=$HOME/check-solr-config-script
-if [ ! -r $BASE_DIR ]
-then
-  mkdir $BASE_DIR
-fi
-
+# Get the path to this script
+BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Other paths
 PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/governor.phar
 PATH_TO_ZD_POST_COMMENT_SCRIPT=$HOME/Dev/bin/post-zendesk-comment.php
-tmpout=${BASE_DIR}/check.tmp
-tmpout2=${BASE_DIR}/check.tmp2
-tmpout_governor=${BASE_DIR}/check.tmp3
+mkdir $BASE_DIR/tmp 2>/dev/null
+tmpout=${BASE_DIR}/tmp/check.tmp
+tmpout2=${BASE_DIR}/tmp/check.tmp2
+tmpout_governor=${BASE_DIR}/tmp/check.tmp3
 date=`date +%Y-%m-%d`
 # See http://linuxtidbits.wordpress.com/2008/08/11/output-color-on-bash-scripts/
 COLOR_RED=$(tput setaf 1) #"\[\033[0;31m\]"
@@ -110,7 +108,7 @@ function ascopyconf() {
     echo "Error: folder $dest already exists"
     return 1
   fi
-  
+
   if [ ${2:-x} = x ]
   then
     server=`asgetservers $1 |head -1`
@@ -122,7 +120,7 @@ function ascopyconf() {
   else
     server=$2
   fi
-  
+
   echo "Copying config from ${server}:/mnt/www/html/*/docroot/files/solr/cores/$1/conf  ..."
   mkdir $dest
   scp -F $HOME/.ssh/ah_config -r ${server}:/mnt/www/html/*/docroot/files/solr/cores/$1/conf/\{*.xml,*.properties,*.txt\} $dest
@@ -141,7 +139,7 @@ function aswaitforcycle() {
       die("ERROR: Instance at $url wasnt up at beginning of check!");
     }
     echo "  Instance currently UP. Waiting for it to come DOWN: ";
-    
+
     # Pause 0.1 seconds and check again until DOWN
     $x = 0;
     while ($up) {
@@ -149,9 +147,9 @@ function aswaitforcycle() {
       usleep(100000);
       $x++; if ($x%10 == 0) { print "."; }
     }
-    
+
     echo "\n  Instance currently DOWN. Waiting for it to come UP: ";
-        
+
     # Pause and check again until DOWN
     while (!$up) {
       $up = solr_json_ping($url);
@@ -170,9 +168,9 @@ function aswaitforcycle() {
     $up = ($result->status == "OK");
     return $up;
   }
-  
-  $r = json_decode(trim(stream_get_contents(STDIN))); 
-  foreach ($r->servers as $server) { 
+
+  $r = json_decode(trim(stream_get_contents(STDIN)));
+  foreach ($r->servers as $server) {
     $url = $server->server;
     wait_down_up($url);
   };
@@ -200,10 +198,10 @@ function asgetgovurl() {
   # Fall back if we don't have Governor drush access.
   if [ `drush sa |grep -c @guvannuh.prod` -eq 0 ]
   then
-    echo "https://governor.acquia-search.com/admin/content2?title=$core"; 
+    echo "https://governor.acquia-search.com/admin/content2?title=$core";
     return
   fi
-  
+
   # Figure out the URL to a particular core on the Governor.
   drush @guvannuh.prod ev 'function _guv_copy_get_nids_from_core_id($core_id) {
   $query = new EntityFieldQuery();
@@ -294,19 +292,19 @@ do
     # NO Solr found, DOWNLOAD IT!
     errmsg "Requirement: Can't find local Solr installation at $solr_dir"
     echo "  Downloading solr into $BASE_DIR/$solr_dir ..."
-    
+
     # Calculate the download URL
     url=http://archive.apache.org/dist/lucene/solr/3.5.0/apache-solr-3.5.0.tgz
     if [ $solr_version = 4 ]
     then
       url=http://archive.apache.org/dist/lucene/solr/4.5.1/solr-4.5.1.tgz
     fi
-    
+
     # Download, uncompress and get rid of tmp file.
     curl $url -o /tmp/download.tgz
     tar -zxf /tmp/download.tgz
     rm /tmp/download.tgz
-    
+
     ## Add extra libraries from Acquia Search
     echo "  Copying extra Solr libraries from an Acquia Search farm..."
     if [ $solr_version = 3 ]
@@ -339,7 +337,7 @@ then
 ${COLOR_YELLOW}$0${COLOR_NONE}
   Script that takes automates testing of customer-submitted Acquia Search configuration files
   with file format checking (UTF-8, LF line endings), testing on local Solr instance, and
-  builds a canned response for customer, along with links and text for the "revision log entry" 
+  builds a canned response for customer, along with links and text for the "revision log entry"
   to edit the index node on http://governor.acquia-search.com/
 
 ${COLOR_YELLOW}Usage:${COLOR_NONE}
@@ -349,7 +347,7 @@ ${COLOR_YELLOW}Usage:${COLOR_NONE}
 ${COLOR_YELLOW}Examples:${COLOR_NONE}
   ${COLOR_GRAY}# Check synonyms.txt from current folder, ticket Z123456, for core WXYZ-12345.dev.default${COLOR_NONE}
   check-solr-config.sh 123456 WXYZ-12345.dev.default synonyms.txt
-  
+
   ${COLOR_GRAY}# Same as above, but multiple files.
   #   Mind the quotes!${COLOR_NONE}
   check-solr-config.sh 123456 WXYZ-12345.dev.default "stopword_pl.txt synonyms_pl.txt schema_extra_types.xml"
@@ -439,7 +437,7 @@ do
       # Check synonyms*.txt format (only non-zero-sized files)
       if [ `echo $file | egrep -c 'synonyms.*txt'` -eq 1 ]
       then
-        # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax 
+        # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
         if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
         then
           errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that isn't a comment, it must use the , or => syntax"
@@ -522,7 +520,7 @@ git commit -m "Initial commit" >/dev/null
 
 # Get list of new files that already exist
 ls $newfiles_dir |sort >$tmpdir/new-files-list.txt
-ls $origconf_dir |sort >$tmpdir/existing-files-list.txt 
+ls $origconf_dir |sort >$tmpdir/existing-files-list.txt
 
 # Copy files into source control and diff
 header "Adding new files from $newfiles_dir and comparing."
@@ -544,7 +542,7 @@ then
   fi
 fi
 
-## 
+##
 if [ $changes -eq 0 ]
 then
   errmsg "No changes detected between current and new configuration!"
@@ -611,7 +609,7 @@ echo "Putting configuration into solr local instance at $solr_dir."
 cd $solr_dir/example
 solrconf_folder=solr/conf
 if [ $solr_version -eq 4 ]
-then 
+then
   solrconf_folder=solr/collection1/conf
 fi
 
@@ -657,7 +655,7 @@ then
   echo "And the complete Solr startup log (errors + nonerrors) is at:"
   echo "  $solrlog"
   echo ""
-  
+
 
   if [ `egrep -c 'SEVERE|ERROR' $errlog` -gt 0 ]
   then
@@ -709,7 +707,7 @@ cat <<EOF
 ${COLOR_YELLOW}1) If you have governor access, edit the core here:
 
   $govurl
-  
+
 2) REMOVE these files (if they've been uploaded before):
 ${COLOR_GRAY}
 EOF
@@ -718,7 +716,7 @@ awk '{print "  " $0 }' $tmpdir/overwritten-files-list.txt
 cat <<EOF
 ${COLOR_YELLOW}
 3) UPLOAD all the file(s) from this folder:
-   
+
   $realfilestoupload_dir
 
 ... and use this as the node revision message:
@@ -821,7 +819,7 @@ cat <<EOF
 
 Please use this as a ticket reply
   on https://acquia.zendesk.com/agent/tickets/${zendesk_ticket}
-  
+
 - - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
 EOF
 
@@ -831,7 +829,7 @@ cat <<EOF
 
 ${COLOR_NONE}- - - - - - - - - - - - - - - - - - - - -
 
-ATTACH this file to the ticket: 
+ATTACH this file to the ticket:
   ${COLOR_GRAY}$diff_file${COLOR_NONE}
 
 CHOOSE your Ticket's Root Cause:
