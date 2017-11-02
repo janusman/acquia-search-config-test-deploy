@@ -29,6 +29,7 @@
 # Constants #########################
 # Get the path to this script
 BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Other paths
 PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/governor.phar
 PATH_TO_ZD_POST_COMMENT_SCRIPT=$HOME/Dev/bin/post-zendesk-comment.php
@@ -49,6 +50,9 @@ zendesk_ticket="${1:-x}"
 core="${2:-x}"
 files="${3:-x}"
 
+# Include ##############
+. $BASE_DIR/functions.sh
+
 # Functions  #########################
 function governor-cli() {
   php $PATH_TO_GOVERNOR_PHAR $@
@@ -63,28 +67,6 @@ function solrfolder() {
   then
     echo "solr-4.5.1"
   fi
-}
-
-function header() {
-  echo ""
-  echo "${COLOR_GRAY}._____________________________________________________________________________"
-  echo "|${COLOR_GREEN}  $1${COLOR_NONE}"
-}
-
-function pausemsg() {
-  echo ""
-  echo " ** ${COLOR_GREEN}PRESS ENTER TO CONTINUE.${COLOR_NONE} **"
-  read
-  echo ""
-  echo ""
-}
-
-function errmsg() {
-  echo "${COLOR_RED}$1${COLOR_NONE}"
-}
-
-function warnmsg() {
-    echo "${COLOR_YELLOW}$1${COLOR_NONE}"
 }
 
 # Return the javasrv-XXX for the given ID
