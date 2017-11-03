@@ -120,7 +120,7 @@ foreach ($attachments as $filename => $url) {
 
 # Write out scripts for each core.
 foreach ($cores as $core) {
-  $script = "#!/bin/bash\ncheck-solr-config.sh '$ticket' $core ticketfiles\n";
+  $script = "#!/bin/bash\n'$BASE_DIR'/check-solr-config.sh '$ticket' $core ticketfiles\n";
   file_put_contents("{$core}.sh", $script);
   echo "Wrote script to {$core}.sh\n";
 }
