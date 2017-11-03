@@ -31,7 +31,7 @@
 BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Other paths
-PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/governor.phar
+PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/install/governor.phar
 PATH_TO_ZD_POST_COMMENT_SCRIPT=${BASE_DIR}/zendesk/post-zendesk-comment.php
 mkdir $BASE_DIR/tmp 2>/dev/null
 tmpout=${BASE_DIR}/tmp/check.tmp
@@ -329,7 +329,6 @@ do
   then
     # NO Solr found, DOWNLOAD IT!
     errmsg "Requirement: Can't find local Solr installation at $solr_dir"
-    echo "  Downloading Solr into $solr_dir ..."
 
     # Calculate the download URL
     url=http://archive.apache.org/dist/lucene/solr/3.5.0/apache-solr-3.5.0.tgz
@@ -337,9 +336,13 @@ do
     then
       url=http://archive.apache.org/dist/lucene/solr/4.5.1/solr-4.5.1.tgz
     fi
+    echo "  Installing Solr v$solr_version from $url..."
 
     # Download, uncompress and get rid of tmp file.
     curl $url -o /tmp/download.tgz
+    mkdir $solr_dir
+    cd $solr_dir
+    cd ..
     tar -zxf /tmp/download.tgz
     rm /tmp/download.tgz
     echo ""
