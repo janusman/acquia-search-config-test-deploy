@@ -32,8 +32,9 @@ BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Other paths
 PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/install/governor.phar
-PATH_TO_ZD_POST_COMMENT_SCRIPT=${BASE_DIR}/zendesk/post-zendesk-comment.php
-mkdir $BASE_DIR/tmp 2>/dev/null
+PATH_TO_ZD_POST_COMMENT_SCRIPT=${BASE_DIR}/extra/zendesk/post-zendesk-comment.php
+PATH_TO_GUV_COPY_MODULE=${BASE_DIR}/extra/guv_copy/guv_copy.module
+mkdir ${BASE_DIR}/tmp 2>/dev/null
 tmpout=${BASE_DIR}/tmp/check.tmp
 tmpout2=${BASE_DIR}/tmp/check.tmp2
 tmpout_governor=${BASE_DIR}/tmp/check.tmp3
@@ -214,7 +215,7 @@ function deploy_files_into_governor() {
   FILES_FOLDER=$2  #E.g. /path/to/the-files-folder (which would contain synonyms.txt, schema.xml, etc.)
   COMMENT_TEXT_FILE=$3  # E.g. /path/to/something.txt (which )
 
-  CODE_file=$BASE_DIR/guv_copy/guv_copy.module
+  CODE_file=$PATH_TO_GUV_COPY_MODULE
   REMOTE_site_env=guvannuh.prod
   XFER_foldername="xferfolder-$$"
   LOCAL_xfer_root=/mnt/tmp
