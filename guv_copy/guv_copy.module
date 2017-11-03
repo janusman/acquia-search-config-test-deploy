@@ -1,0 +1,396 @@
+<?php
+
+/**
+ * @file
+ * Guv Copy module.
+ */
+
+define('GUV_COPY_UPLOAD_FIELDNAME', 'field_upload_file');
+define('GUV_COPY_COREID_FIELDNAME', 'field_id');
+define('GUV_COPY_NODETYPE', 'si_search_core');
+
+function guv_copy_menu() {
+  $items['guv/index/copy'] = array(
+    'title' => 'Copy Schema',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('guv_copy_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['guv/index/autocomplete'] = array(
+    'title' => 'Autocomplete for guv_copy',
+    'page callback' => 'guv_copy_autocomplete',
+    'access callback' => TRUE,  //TODO
+    'type' => MENU_CALLBACK
+  );
+  return $items;
+}
+
+function guv_copy_form($form, &$form_state) {
+  $form['#validate'][] = 'guv_copy_validate';
+  $form['#submit'][] = 'guv_copy_submit';
+  // We have not yet asked for confirmation
+  // asked_confirm should be TRUE - set by the submit handler
+  if (isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm']) {
+    $source_nids = _guv_copy_get_nids_from_core_id($form_state['values']['source']);
+    $nid = $source_nids[0];
+    $source = node_load($nid);
+    $source_index_id = $source->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
+    $target_ids = _guv_copy_split_targets($form_state['values']['targets']);
+    $target_html = theme('item_list', array('items' => $target_ids));
+    return confirm_form($form,
+      t(
+        'Are you sure you want to copy the schema configurations from %source_index_id to the following?',
+        array(
+          '%source_index_id' => $source_index_id,
+        )
+      ),
+      'guv/index/copy',
+      $target_html . t('This action cannot be undone.'),
+      t('Confirm'),
+      t('Cancel')
+    );
+  }
+  else {
+    // we have not yet asked for confirmation
+    $form_state['storage']['asked_confirm'] = FALSE;
+    $form['source'] = array(
+      '#title' => t('Source index'),
+      '#maxlength' => 40,
+      '#type' => 'textfield',
+      '#description' => 'Enter your source SOLR index ID',
+      '#required' => TRUE,
+      '#autocomplete_path' => 'guv/index/autocomplete',
+    );
+    $form['targets'] = array(
+      '#type' => 'textarea',
+      '#description' => 'Enter comma-separated SOLR index IDs. The configuration from source will be copied on them',
+      '#required' => TRUE,
+    );
+    $form['reason'] = array(
+      '#type' => 'textfield',
+      '#required' => TRUE,
+      '#description' => 'Paste your ZD or Jira ticket link and/or comment on why this is happening',
+
+    );
+    $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
+    return $form;
+  }
+}
+
+function guv_copy_validate($form, &$form_state) {
+  // Don't validate again.
+  if ($form_state['storage']['asked_confirm'] == TRUE) {
+    return;
+  }
+  $ok = TRUE;
+  $core_id = $form_state['values']['source'];
+  $nids = _guv_copy_get_nids_from_core_id($core_id);
+  // Validate that we have exactly one result.
+  if (count($nids)<1) {
+    form_set_error('source', 'Could not find "' . $core_id . '".');
+    $ok = FALSE;
+  }
+  elseif (count($nids)>1) {
+    form_set_error('source', 'Found more than one node for "' . $core_id . '".' . implode(', ', $nids));
+    $ok = FALSE;
+  }
+  // Check that the source has files!!
+  if ($ok) {
+    $node = node_load($nids[0]);
+    if (!isset($node->{GUV_COPY_UPLOAD_FIELDNAME}[LANGUAGE_NONE][0])) {
+      form_set_error('source',
+        'The source core "' . $core_id . '" has no custom files!');
+      $ok = FALSE;
+    }
+  }
+
+  // Check only destination if source passed validation.
+  if ($ok) {
+    $form_state['storage']['values']['source_nid'] = $nids[0];
+    $target_ids = _guv_copy_split_targets($form_state['values']['targets']);
+    foreach ($target_ids as $core_id) {
+      $nids = _guv_copy_get_nids_from_core_id($core_id);
+      // Validate that we have exactly one result.
+      if (count($nids) < 1) {
+        form_set_error('targets', 'Could not find "' . $core_id . '".');
+      }
+      elseif (count($nids) > 1) {
+        form_set_error('targets',
+          'Found more than one node for "' . $core_id . '".' . implode(', ', $nids));
+      }
+      elseif ($core_id == $form_state['values']['source']) {
+        form_set_error('targets',
+          'Can not specify "' . $core_id . '" as both origin and destination.');
+      }
+    }
+    $form_state['storage']['values']['target_nids'] = $nids;
+  }
+}
+
+function _guv_copy_split_targets($string) {
+  $string = trim($string);
+  $string = str_replace(' ', '', $string);
+  $target_ids = preg_split('/[,\n\r]+/', $string);
+  return $target_ids;
+}
+
+function guv_copy_submit($form, &$form_state) {
+  if (isset($form_state['storage']['asked_confirm']) && $form_state['storage']['asked_confirm'] === FALSE) {
+    $form_state['storage']['values'] = $form_state['values'];
+    // we have not yet asked for confirmation
+    // setting asked_confirm to TRUE to present the confirmation form isntead.
+    $form_state['storage']['asked_confirm'] = TRUE;
+    $form_state['rebuild'] = TRUE;
+  }
+  else {
+    $nids = _guv_copy_get_nids_from_core_id($form_state['storage']['values']['source']);
+    $source_nid = $nids[0];
+    $target_ids = _guv_copy_split_targets($form_state['storage']['values']['targets']);
+    $reason = $form_state['storage']['values']['reason'];
+    _guv_copy_do_copy_nid_to_coreids($source_nid, $target_core_ids, $reason);
+  }
+}
+
+function _guv_copy_do_copy_nid_to_coreids($source_nid, $target_core_ids, $reason) {
+  $target_nids = array();
+  foreach ($target_core_ids as $key => $index_id) {
+    $nids = _guv_copy_get_nids_from_core_id($index_id);
+    $target_nids[] = $nids[0];
+  }
+  _guv_copy_do_copy_nid_to_nids($source_nid, $target_nids, $reason);
+}
+
+function _guv_copy_do_copy_folder_to_coreids($source_folder, $target_core_ids, $reason) {
+  $target_nids = array();
+  foreach ($target_core_ids as $key => $index_id) {
+    $nids = _guv_copy_get_nids_from_core_id($index_id);
+    $target_nids[] = $nids[0];
+  }
+  _guv_copy_do_copy_folder_files_to_nids($source_folder, $target_nids, $reason);
+}
+
+
+function guv_copy_autocomplete($string) {
+  $matches = array();
+  if ($string) {
+    $escaped_string = "%" . preg_replace('/[^A-Z0-9-]*/', '', $string, -1) . "%";
+    $fieldname = GUV_COPY_COREID_FIELDNAME;
+    $result = db_query(
+      "SELECT n.nid, n.title, fid.{$fieldname}_value field_id_value FROM {node} n"
+      . "  INNER JOIN {field_data_{$fieldname}} fid ON fid.entity_id=n.nid"
+      . "  WHERE field_id_value LIKE '$escaped_string' AND n.status=1"
+    );
+    while ($record = $result->fetchAssoc()) {
+      $matches[$record['field_id_value']] = check_plain($record['field_id_value']);
+    }
+  }
+  drupal_json_output($matches);
+}
+
+function _guv_copy_do_copy_folder_files_to_nids($source_folder, $target_nids, $reason_message) {
+  $source_files = _guv_copy_get_files_from_folder($source_folder);
+
+  // Process each of the cores given.
+  foreach ($target_nids as $nid) {
+    if (!$nid) {
+      break;
+    }
+    $node = node_load($nid);
+    if (!$node) {
+      drupal_set_message("Could not load node with ID $nid!", 'error');
+      break;
+    }
+    $dest_index_id = $node->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
+    drupal_set_message("Processing destination core $dest_index_id at " . _guv_copy_get_node_url($node));
+
+    // Attach the file file data
+    $added_files = array();
+    foreach ($source_files as $file) {
+      $ok = _guv_copy_add_file_to_index($node, $file);
+      if (!$ok) {
+        drupal_set_message("Error while trying to add file to node {$node->nid}.");
+        break;
+      }
+      $added_files[] = $file;
+    }
+    if (!$added_files) {
+      drupal_set_message("No files changed, so not saving");
+      continue;
+    }
+    $revision_msg = $reason_message  . ' - Added files: ' . implode(', ', $added_files);
+    _guv_copy_add_revision_to_node_object($node, $revision_msg);
+    node_save($node);
+    drupal_set_message("Saved node as new revision " . $node->vid . ": " . _guv_copy_get_node_url($node));
+  }
+}
+
+
+
+function _guv_copy_do_copy_nid_to_nids($source_nid, $target_nids, $reason_message) {
+  $source = node_load($source_nid);
+
+  // Process each of the cores given.
+  foreach ($target_nids as $nid) {
+    if (!$nid) {
+      break;
+    }
+    $node = node_load($nid);
+    if (!$node) {
+      drupal_set_message("Could not load node with ID $nid!", 'error');
+      break;
+    }
+    $dest_index_id = $node->{GUV_COPY_COREID_FIELDNAME}[LANGUAGE_NONE][0]['value'];
+    drupal_set_message("Processing destination core $dest_index_id at " . _guv_copy_get_node_url($node));
+
+    // Attach the file file data
+    $added_files = array();
+    foreach ($source->{GUV_COPY_UPLOAD_FIELDNAME}[LANGUAGE_NONE] as $file) {
+      $ok = _guv_copy_add_file_to_index($node, $file);
+      if (!$ok) {
+        drupal_set_message("Error while trying to add file to node {$node->nid}.");
+        break;
+      }
+      $added_files[] = $file['origname'];
+    }
+    if (!$added_files) {
+      drupal_set_message("No files changed, so not saving");
+      continue;
+    }
+    $revision_msg = $reason_message  . ' - Added files: ' . implode(', ', $added_files);
+    _guv_copy_add_revision_to_node_object($node, $revision_msg);
+    node_save($node);
+    drupal_set_message("Saved node as new revision " . $node->vid . ": " . _guv_copy_get_node_url($node));
+  }
+}
+
+function _guv_copy_get_node_url($node) {
+  return url("node/{$node->nid}", array('absolute' => TRUE));
+}
+
+/**
+ * Unused function
+ */
+function _guv_copy_get_files_from_folder($filepath) {
+  echo "Scanning $filepath for files...";
+  $files = scandir($filepath);
+  // Remove files that don't have certain extensions
+  foreach ($files as $i => $file) {
+    $ext = pathinfo($file, PATHINFO_EXTENSION);
+    if (substr($file, 0, 1) == ".") {
+      unset($files[$i]);
+    }
+    elseif ($ext != "txt" && $ext != "xml") {
+      echo "  Ignoring file $file\n because of extension\n";
+      unset($files[$i]);
+    }
+  }
+  foreach ($files as &$file) {
+    $file = $filepath . '/' . $file;
+  }
+  drupal_set_message(count($files) . " applicable files found.");
+  return $files;
+}
+
+function _guv_copy_add_revision_to_node_object($node, $message) {
+  // Add log line
+  $node->revision = 1;
+  $node->log = $message;
+}
+
+function _guv_copy_get_nids_from_core_id($core_id) {
+  $query = new EntityFieldQuery();
+  $nodes = $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', GUV_COPY_NODETYPE)
+    ->fieldCondition(GUV_COPY_COREID_FIELDNAME, 'value' , $core_id, '=      ')
+    ->execute();
+  if (isset($nodes['node'])) {
+    return array_keys($nodes['node']);
+  }
+  return array();
+}
+
+/**
+ * Returns the array index value (or FALSE) of a file field, where that value
+ * matches the given filename's basename.
+ */
+
+function _guv_copy_find_matching_file_in_node($node, $base_filename) {
+  if (!isset($node->{GUV_COPY_UPLOAD_FIELDNAME})) {
+    return 0;
+  }
+  if (!isset($node->{GUV_COPY_UPLOAD_FIELDNAME}[$node->language])) {
+    return 0;
+  }
+  $index = null;
+  foreach ($node->{GUV_COPY_UPLOAD_FIELDNAME}[$node->language] as $index => $value) {
+    if ($value['origname'] === $base_filename) {
+      drupal_set_message("Destination already had $base_filename, replacing with new version.");
+      return $index;
+    }
+  }
+  if ($index === null) {
+    return 0;
+  }
+  else {
+    // If not found, return the next-largest index!
+    drupal_set_message("Destination does not have $base_filename, adding it.");
+    return $index + 1;
+  }
+}
+
+function _guv_copy_add_file_to_index($node, $file) {
+  if (!isset($node->{GUV_COPY_COREID_FIELDNAME}['und'][0]['value'])) {
+    drupal_set_message("Node {$node->nid} does not have required " . GUV_COPY_COREID_FIELDNAME . " field!");
+    return FALSE;
+  }
+  $file_path = "";
+  if (is_array($file)) {
+    # Assume file
+    $file_path = drupal_realpath($file['uri']); # e.g. /mnt/gfs/guvannuh/sites/default/files-private/search_configs/GMXY-141988.dev.brgcpatcom/schema_2.xml
+    $file_basename =  $file['origname'];
+  }
+  if (is_string($file)) {
+    $file_path = $file;
+    $file_basename = basename($file);
+  }
+  if (!$file_path) {
+    return FALSE;
+  }
+
+  // $index means the file array index here
+  $index = _guv_copy_find_matching_file_in_node($node, $file_basename);
+
+  // We will save file under this location.
+  // E.g. public://myfiles/
+  $destination = file_default_scheme() . '://search_configs/' . $node->{GUV_COPY_COREID_FIELDNAME}['und'][0]['value'] . '/';
+
+  // Make sure destination directory exists before moving files to that path.
+  // This will create directory if it does not exist.
+  file_prepare_directory($destination, FILE_CREATE_DIRECTORY);
+
+  // Save file.
+  $newfile = file_save_data(file_get_contents($file_path), $destination . basename($file_path), FILE_EXISTS_RENAME);
+  $newfile->uid = $node->uid;
+  $newfile->display = 1;
+  $newfile->description = "";
+  $newfile->origname = $file_basename;
+  #$file->filename = pathinfo($file_path, PATHINFO_BASENAME);
+  #$file->filemime = file_get_mimetype($file_path);
+  // Make it permanent, otherwise it will get deleted later.
+  #$file->status = FILE_STATUS_PERMANENT;
+  #echo "Debug: File object:\n";
+  #print_r($file);
+  // Save file object to make it a 'managed file'.
+  file_save($newfile);
+
+  // Now attach file to the file field.
+  if (!isset($node->{GUV_COPY_UPLOAD_FIELDNAME})) {
+    $node->{GUV_COPY_UPLOAD_FIELDNAME} = array($node->language => array());
+  }
+  if (!isset($node->{GUV_COPY_UPLOAD_FIELDNAME}[$node->language])) {
+    $node->{GUV_COPY_UPLOAD_FIELDNAME}[$node->language] = array();
+  }
+  $node->{GUV_COPY_UPLOAD_FIELDNAME}[$node->language][$index] = (array)$newfile;
+  return TRUE;
+}

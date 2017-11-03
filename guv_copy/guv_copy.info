@@ -1,0 +1,6 @@
+name = Guvannuh Copy
+description = Copies the whole schema configuration (all xml/txt files) from one index to another.
+core = 7.x
+package = Acquia Search Guvannuh
+
+
