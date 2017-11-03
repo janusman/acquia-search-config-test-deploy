@@ -32,18 +32,12 @@ BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Other paths
 PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/governor.phar
-PATH_TO_ZD_POST_COMMENT_SCRIPT=$HOME/Dev/bin/post-zendesk-comment.php
+PATH_TO_ZD_POST_COMMENT_SCRIPT=${BASE_DIR}/zendesk/post-zendesk-comment.php
 mkdir $BASE_DIR/tmp 2>/dev/null
 tmpout=${BASE_DIR}/tmp/check.tmp
 tmpout2=${BASE_DIR}/tmp/check.tmp2
 tmpout_governor=${BASE_DIR}/tmp/check.tmp3
 date=`date +%Y-%m-%d`
-# See http://linuxtidbits.wordpress.com/2008/08/11/output-color-on-bash-scripts/
-COLOR_RED=$(tput setaf 1) #"\[\033[0;31m\]"
-COLOR_YELLOW=$(tput setaf 3) #"\[\033[0;33m\]"
-COLOR_GREEN=$(tput setaf 2) #"\[\033[0;32m\]"
-COLOR_GRAY=$(tput setaf 7) #"\[\033[2;37m\]"
-COLOR_NONE=$(tput sgr0) #"\[\033[0m\]"
 
 # Arguments  #########################
 zendesk_ticket="${1:-x}"
@@ -61,11 +55,11 @@ function governor-cli() {
 function solrfolder() {
   if [ $1 -eq 3 ]
   then
-    echo "apache-solr-3.5.0"
+    echo "$BASE_DIR/install/apache-solr-3.5.0"
   fi
   if [ $1 -eq 4 ]
   then
-    echo "solr-4.5.1"
+    echo "$BASE_DIR/install/solr-4.5.1"
   fi
 }
 
@@ -176,9 +170,18 @@ function file_to_clipboard() {
   fi
 }
 
+function check_governor_access() {
+  if [ `drush sa |grep -c @guvannuh.prod` -eq 0 ]
+  then
+    echo 0
+  else
+    echo 1
+  fi
+}
+
 function asgetgovurl() {
   # Fall back if we don't have Governor drush access.
-  if [ `drush sa |grep -c @guvannuh.prod` -eq 0 ]
+  if [ `check_governor_access` -eq 0 ]
   then
     echo "https://governor.acquia-search.com/admin/content2?title=$core";
     return
@@ -204,6 +207,59 @@ if (sizeof($result) == 1) {
 else {
   echo "https://governor.acquia-search.com/admin/content2?title=$core\n";
 }'
+}
+
+function deploy_files_into_governor() {
+  CORE=$1 # E.g. ABCD-12345
+  FILES_FOLDER=$2  #E.g. /path/to/the-files-folder (which would contain synonyms.txt, schema.xml, etc.)
+  COMMENT_TEXT_FILE=$3  # E.g. /path/to/something.txt (which )
+
+  CODE_file=$BASE_DIR/guv_copy/guv_copy.module
+  REMOTE_site_env=guvannuh.prod
+  XFER_foldername="xferfolder-$$"
+  LOCAL_xfer_root=/mnt/tmp
+  LOCAL_xfer_folder=${LOCAL_xfer_root}/${XFER_foldername}
+  mkdir $LOCAL_xfer_folder 2>/dev/null
+
+  ########
+  # Build folder with items to transfer:
+  # * files folder
+  # * Revision log comment
+  # * Additional code
+
+  # Write change summary
+  cp $COMMENT_TEXT_FILE $LOCAL_xfer_folder/change-summary-with-ticket.txt
+  # Copy the code
+  cp $CODE_file $LOCAL_xfer_folder
+  # Copy the files
+  cp -R $FILES_FOLDER $LOCAL_xfer_folder
+
+  ########
+  # Transfer the folder
+  # https://drupal.stackexchange.com/questions/145239/how-to-scp-one-file-to-remote-using-drush
+  echo "Transfering files..."
+  REMOTE_xfer_root=/mnt/tmp/${REMOTE_site_env}
+  REMOTE_xfer_folder=${REMOTE_xfer_root}/${XFER_foldername}
+  tmp=`pwd`
+  cd ${LOCAL_xfer_root}
+  tar zcf - $XFER_foldername | drush @${REMOTE_site_env} ssh "tar xvz -C $REMOTE_xfer_root"
+  cd $tmp
+
+  ########
+  # Deploy into the node
+  echo "Calling remote code..."
+  #echo '# Drush command: drush @'${REMOTE_site_env}' --uri=https://governor.acquia-search.com ev
+  drush @${REMOTE_site_env} --uri=https://governor.acquia-search.com ev '
+    $dir = "'${REMOTE_xfer_folder}'";
+    include "$dir/guv_copy.module";
+    _guv_copy_do_copy_folder_to_coreids(
+      "$dir/'`basename ${FILES_FOLDER}`'",
+      array("'$CORE'"),
+      file_get_contents("$dir/change-summary-with-ticket.txt")
+    );
+    ';
+
+  rm -rf $LOCAL_xfer_folder
 }
 
 ############################################
@@ -273,7 +329,7 @@ do
   then
     # NO Solr found, DOWNLOAD IT!
     errmsg "Requirement: Can't find local Solr installation at $solr_dir"
-    echo "  Downloading solr into $BASE_DIR/$solr_dir ..."
+    echo "  Downloading Solr into $solr_dir ..."
 
     # Calculate the download URL
     url=http://archive.apache.org/dist/lucene/solr/3.5.0/apache-solr-3.5.0.tgz
@@ -286,6 +342,7 @@ do
     curl $url -o /tmp/download.tgz
     tar -zxf /tmp/download.tgz
     rm /tmp/download.tgz
+    echo ""
 
     ## Add extra libraries from Acquia Search
     echo "  Copying extra Solr libraries from an Acquia Search farm..."
@@ -301,7 +358,7 @@ do
       #mkdir ${solr_dir}/example/solr/collection1/conf/lang
       #echo "## EMPTY file put here by $0" >${solr_dir}/example/solr/collection1/conf/lang/stopwords_en.txt
     fi
-    echo "  Done installing $BASE_DIR/$solr_dir"
+    echo "  Done installing $solr_dir"
   else
     if [ ! -r $solr_dir/example/start.jar ]
     then
@@ -315,8 +372,8 @@ cd $cur_folder
 # Output help if no index or files
 if [ ${core} = x -o "${files:-x}" = x -o ${zendesk_ticket:-x} = x ]
 then
+  header $0
   cat <<EOF
-${COLOR_YELLOW}$0${COLOR_NONE}
   Script that takes automates testing of customer-submitted Acquia Search configuration files
   with file format checking (UTF-8, LF line endings), testing on local Solr instance, and
   builds a canned response for customer, along with links and text for the "revision log entry"
@@ -344,7 +401,7 @@ then
 fi
 
 # Create tmp folder
-tmpdir=`pwd`"/check-config-tmp-${core}"
+tmpdir="$BASE_DIR/tmp/check-config-tmp-${core}"
 if [ -r $tmpdir ]
 then
   warnmsg "Warning: Previous folder $tmpdir found, moving to ${tmpdir}-BAK"
@@ -445,9 +502,9 @@ Hello,
 
 We could not deploy your configuration, because of the following error thrown by our checking scripts:
 
-```
+\`\`\`
 paste-errors-here
-```
+\`\`\`
 
 Can you please verify this file? We recommend you check it does work and causes the behavior you intended in a local Solr instance.
 
@@ -580,10 +637,10 @@ header "Test configuration changes in Local Solr"
 cat $tmpout_governor |php -r '$result = json_decode(trim(stream_get_contents(STDIN))); echo "solr_version=" . (preg_match("/solr.*4/i", $result->colony) ? 4 : 3) . "\n";' >$tmpout2
 . $tmpout2
 echo "Solr version: $solr_version"
-solr_dir=$BASE_DIR/`solrfolder 3`
+solr_dir=`solrfolder 3`
 if [ $solr_version -eq 4 ]
 then
-  solr_dir=$BASE_DIR/`solrfolder 4`
+  solr_dir=`solrfolder 4`
 fi
 
 # Place config into Solr instance
@@ -620,7 +677,7 @@ if [ $solr_version -eq 3 ]
 then
   cat $solrlog |awk 'NR==1 { err=0; out=""; } /^'`date +%h`' [0-9]/ { if (err==1) print out; out=""; err=0; } /SEVERE|WARN|ERROR/ { err=1 } { out=out "\n" $0 }' >$errlog
 else
-  cat $solrlog |awk 'NR==1 { err=0; out=""; } /^[0-9][0-9]*  *\[/ { if (err==1) print out; out=""; err=0; } /SEVERE|WARN|ERROR/ { err=1 } { out=out "\n" $0 }' >$errlog
+  cat $solrlog |awk 'NR==1 { err=0; out=""; } /^[0-9][0-9]*  *\[/ { if (err==1) print out; out=""; err=0; } /SEVERE|WARN|ERROR/ { err=1 } { out=out "\n" $0 }' |grep -v "directory to add to classloader: ./conf/lib" >$errlog
 fi
 
 header "Results of Local Solr testing"
@@ -669,7 +726,8 @@ EOF
     echo "Severe messages found. Exiting."
     exit 1
   else
-    echo "${COLOR_YELLOW}Only warnings found... continuing.${COLOR_NONE}"
+    echo "${COLOR_YELLOW}Only warnings found... please check before continuing.${COLOR_NONE}"
+    pausemsg
   fi
 else
   echo "  ${COLOR_GREEN}No Solr startup errors found!${COLOR_NONE}"
@@ -677,25 +735,39 @@ else
   echo "    $solrlog"
 fi
 
-pausemsg
-
-# Show success and ping core
-header "MANUAL STEP: Manually upload file to ${core} index"
-govurl=`asgetgovurl ${core}`
+# Build summary file.
 echo "Ticket z${zendesk_ticket} |" >$summary_file_with_ticket
 cat $summary_file >>$summary_file_with_ticket
-cat <<EOF
 
-${COLOR_YELLOW}1) If you have governor access, edit the core here:
+# Determine upload mode.
+if [ `check_governor_access` -eq 1 ]
+then
+  upload_mode="auto"
+fi
 
-  $govurl
+if [ "${upload_mode}" = "auto" ]
+then
+  header "Deploying files into ${core} index"
+  deploy_files_into_governor ${core} $realfilestoupload_dir $summary_file_with_ticket
+fi
 
-2) REMOVE these files (if they've been uploaded before):
-${COLOR_GRAY}
-EOF
-awk '{print "  " $0 }' $tmpdir/overwritten-files-list.txt
+if [ "${upload_mode}" = "manual" ]
+then
+  # Show success and ping core
+  header "MANUAL STEP: Manually upload file to ${core} index"
+  govurl=`asgetgovurl ${core}`
+  cat <<EOF
 
-cat <<EOF
+  ${COLOR_YELLOW}1) If you have governor access, edit the core here:
+
+    $govurl
+
+  2) REMOVE these files (if they've been uploaded before):
+  ${COLOR_GRAY}
+  EOF
+  awk '{print "  " $0 }' $tmpdir/overwritten-files-list.txt
+
+  cat <<EOF
 ${COLOR_YELLOW}
 3) UPLOAD all the file(s) from this folder:
 
@@ -705,11 +777,11 @@ ${COLOR_YELLOW}
 - - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
 EOF
 
-cat $summary_file_with_ticket
-# Also place this file into the clipboard
-file_to_clipboard $summary_file_with_ticket
+  cat $summary_file_with_ticket
+  # Also place this file into the clipboard
+  file_to_clipboard $summary_file_with_ticket
 
-cat <<EOF
+  cat <<EOF
 ${COLOR_YELLOW}- - - - - - - - - - - - - - - - - - - - -
 
 3) On the Governor: SAVE the node.
@@ -717,16 +789,15 @@ ${COLOR_YELLOW}- - - - - - - - - - - - - - - - - - - - -
 4) On this Terminal: watch the pinging below, ${COLOR_RED}make sure the core goes down and then comes back up!${COLOR_NONE}
 ${COLOR_NONE}
 EOF
+fi
 
 # Do pinging
-#watch --differences=permanent -n1 php $PATH_TO_GOVERNOR_PHAR index:ping $core
+header "Waiting for Solr core to restart in master and slave"
 aswaitforcycle $core
-
 echo "Pinging done!"
-pausemsg
 
 # Output canned response
-header "LAST STEP: Send following response and file(s) via ticket $zendesk_ticket"
+header "LAST STEP: Send response and file(s) via ticket $zendesk_ticket"
 # Build ticket response
 ticket_response_file="${tmpdir}/ticket-response-$core.txt"
 cat <<EOF >$ticket_response_file
@@ -752,7 +823,8 @@ Note that you can obtain the current Solr configuration files at any time via Dr
 
 EOF
 
-if [ -r $PATH_TO_ZD_POST_COMMENT_SCRIPT ]
+# Offer option to reply into zendesk directly, if we have proper config.
+if [ -r $BASE_DIR/creds.txt ]
 then
   # Prompt for next step
   PS3='Please select how you want to reply to customer: '
@@ -772,6 +844,7 @@ then
     esac
   done
 else
+  warnmsg "Note: If you had a creds.txt file at $BASE_DIR then this script could post a reply directly into Zendesk."
   next_step=manual_comment
 fi
 
