@@ -40,11 +40,6 @@ tmpout2=${BASE_DIR}/tmp/check.tmp2
 tmpout_governor=${BASE_DIR}/tmp/check.tmp3
 date=`date +%Y-%m-%d`
 
-# Arguments  #########################
-zendesk_ticket="${1:-x}"
-core="${2:-x}"
-files="${3:-x}"
-
 # Include ##############
 . $BASE_DIR/functions.sh
 
@@ -373,8 +368,79 @@ do
 done
 cd $cur_folder
 
+
+
+# Get options
+# https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+POSITIONAL=()
+NO_DEPLOY=0
+while [[ $# -gt 0 ]]
+do
+  key="$1"
+
+  case $key in
+
+
+  # Normal option processing
+    -h | --help)
+      HELP=1
+      ;;
+  # Special cases
+    --)
+      break
+      ;;
+  # Long options
+    --help)
+      HELP=1
+      ;;
+    #--stages=*)
+    #  STAGE=$1
+    #  ;;
+    --no-deploy|--nodeploy)
+      NO_DEPLOY=1;
+      ;;
+    --*)
+      # error unknown (long) option $1
+      echo "  ${COLOR_RED}Warning: Unknown option $1${COLOR_NONE}"
+      ;;
+    -?)
+      # error unknown (short) option $1
+      ;;
+
+  # MORE FUN STUFF HERE:
+  # Split apart combined short options
+  #  -*)
+  #    split=$1
+  #    shift
+  #    set -- $(echo "$split" | cut -c 2- | sed 's/./-& /g') "$@"
+  #    continue
+  #    ;;
+
+  # Done with options, parse other options
+  *)    # unknown option
+    POSITIONAL+=("$1") # save it in an array for later
+    ;;
+  esac
+
+  shift
+done
+
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
+# Arguments  #########################
+zendesk_ticket="${1:-x}"
+core="${2:-x}"
+files="${3:-x}"
+
+cat <<EOF
+    Ticket: $zendesk_ticket
+      Core: $core
+     Files: $files
+ no_deploy: $NO_DEPLOY
+EOF
+
 # Output help if no index or files
-if [ ${core} = x -o "${files:-x}" = x -o ${zendesk_ticket:-x} = x ]
+if [ ${HELP:-x} = 1 -o ${core} = x -o "${files:-x}" = x -o ${zendesk_ticket:-x} = x ]
 then
   header $0
   cat <<EOF
@@ -384,8 +450,11 @@ then
   to edit the index node on http://governor.acquia-search.com/
 
 ${COLOR_YELLOW}Usage:${COLOR_NONE}
-  $0 zd-ticket-number index-id file
-  $0 zd-ticket-number index-id "file1 file2 file3"
+  $0 zd-ticket-number index-id file [--no-deploy]
+  $0 zd-ticket-number index-id "file1 file2 file3" [--no-deploy]
+
+Options:
+  [--no-deploy] : Skips the deployment steps.
 
 ${COLOR_YELLOW}Examples:${COLOR_NONE}
   ${COLOR_GRAY}# Check synonyms.txt from current folder, ticket Z123456, for core WXYZ-12345.dev.default${COLOR_NONE}
@@ -742,6 +811,14 @@ fi
 # Build summary file.
 echo "Ticket z${zendesk_ticket} |" >$summary_file_with_ticket
 cat $summary_file >>$summary_file_with_ticket
+
+# If NO_DEPLOY, then stop here.
+if [ "${NO_DEPLOY:-x}" -eq 1 ]
+then
+  warnmsg "--no-deploy argument given, stopping script."
+  exit
+fi
+
 
 # Determine upload mode.
 if [ `check_governor_access` -eq 1 ]
