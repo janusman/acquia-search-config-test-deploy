@@ -84,7 +84,9 @@ foreach ($result->comments as $cid => $comment) {
     if ($ok) {
       foreach ($matches as $match) {
         $core = $match[0];
-        $cores[$core] = $core;
+        if ($core != "ABCD-12345") {
+          $cores[$core] = $core;
+        }
       }
     }
   }
