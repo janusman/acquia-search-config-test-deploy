@@ -2,7 +2,7 @@
 
 // This should end in /api/v2 (NO trailing slash!)
 define("ZD_URL", "https://acquia.zendesk.com/api/v2");
-define("ZD_CREDS_FILE", __DIR__ . "/../creds.txt");
+define("ZD_CREDS_FILE", __DIR__ . "/../../creds.txt");
 define("ZD_USERAGENT", "AcquiaAlejandroGarza/1.0");
 
 function zendesk_curl($url, $json, $action)
