@@ -374,6 +374,7 @@ cd $cur_folder
 # https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
 POSITIONAL=()
 NO_DEPLOY=0
+AUTO_COMMENT=0
 while [[ $# -gt 0 ]]
 do
   key="$1"
@@ -398,6 +399,9 @@ do
     #  ;;
     --no-deploy|--nodeploy)
       NO_DEPLOY=1;
+      ;;
+    --auto-comment|--autocomment)
+      AUTO_COMMENT=1;
       ;;
     --*)
       # error unknown (long) option $1
@@ -433,10 +437,11 @@ core="${2:-x}"
 files="${3:-x}"
 
 cat <<EOF
-    Ticket: $zendesk_ticket
-      Core: $core
-     Files: $files
- no_deploy: $NO_DEPLOY
+       Ticket: $zendesk_ticket
+         Core: $core
+        Files: $files
+    no_deploy: $NO_DEPLOY
+ auto_comment: $AUTO_COMMENT
 EOF
 
 # Output help if no index or files
@@ -454,15 +459,16 @@ ${COLOR_YELLOW}Usage:${COLOR_NONE}
   $0 zd-ticket-number index-id "file1 file2 file3" [--no-deploy]
 
 Options:
-  [--no-deploy] : Skips the deployment steps.
+     [--no-deploy] : Skips the deployment steps.
+  [--auto-comment] : Auto-posts public comment to Ticket if everything looks OK.
 
 ${COLOR_YELLOW}Examples:${COLOR_NONE}
   ${COLOR_GRAY}# Check synonyms.txt from current folder, ticket Z123456, for core WXYZ-12345.dev.default${COLOR_NONE}
-  check-solr-config.sh 123456 WXYZ-12345.dev.default synonyms.txt
+  ./check-solr-config.sh 123456 WXYZ-12345.dev.default synonyms.txt
 
   ${COLOR_GRAY}# Same as above, but multiple files.
   #   Mind the quotes!${COLOR_NONE}
-  check-solr-config.sh 123456 WXYZ-12345.dev.default "stopword_pl.txt synonyms_pl.txt schema_extra_types.xml"
+  ./check-solr-config.sh 123456 WXYZ-12345.dev.default "stopword_pl.txt synonyms_pl.txt schema_extra_types.xml"
 EOF
   exit $ok
 fi
@@ -648,7 +654,7 @@ then
   echo "  Summary of changes:" >$summary_file
   cd $origconf_dir
   git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --stat --color=never | awk '{ print "    " $0 }' >> $summary_file
-  if [ `grep -c . $summary_file` -eq 1 ]
+  if [ `grep -c . $summary_file` -eq 1 -o `grep -c ", 0 insertions..., 0 deletions" $summary_file` -eq 1 ]
   then
     changes=0
   fi
@@ -821,6 +827,7 @@ fi
 
 
 # Determine upload mode.
+upload_mode="manual"
 if [ `check_governor_access` -eq 1 ]
 then
   upload_mode="auto"
@@ -907,23 +914,29 @@ EOF
 # Offer option to reply into zendesk directly, if we have proper config.
 if [ -r $BASE_DIR/creds.txt ]
 then
-  # Prompt for next step
-  PS3='Please select how you want to reply to customer: '
-  options=("Have this script automatically post a reply into Zendesk for you" "You will manually post a reply")
-  select opt in "${options[@]}"
-  do
-    case $opt in
-      "Have this script automatically post a reply into Zendesk for you")
-        next_step=auto_comment
-        break;
-        ;;
-      "You will manually post a reply")
-        next_step=manual_comment
-        break;
-        ;;
-      *) echo invalid option;;
-    esac
-  done
+  if [ $AUTO_COMMENT -eq 1 ]
+  then
+    echo "${COLOR_YELLOW}Auto-comment flag enabled${COLOR_NONE}"
+    next_step=auto_comment
+  else
+    # Prompt for next step
+    PS3='Please select how you want to reply to customer: '
+    options=("Have this script automatically post a reply into Zendesk for you" "You will manually post a reply")
+    select opt in "${options[@]}"
+    do
+      case $opt in
+        "Have this script automatically post a reply into Zendesk for you")
+          next_step=auto_comment
+          break;
+          ;;
+        "You will manually post a reply")
+          next_step=manual_comment
+          break;
+          ;;
+        *) echo invalid option;;
+      esac
+    done
+  fi
 else
   warnmsg "Note: If you had a creds.txt file at $BASE_DIR then this script could post a reply directly into Zendesk."
   next_step=manual_comment
