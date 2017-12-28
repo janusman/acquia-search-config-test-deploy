@@ -48,6 +48,17 @@ function governor-cli() {
   php $PATH_TO_GOVERNOR_PHAR $@
 }
 
+function solrfullversion() {
+  if [ $1 -eq 3 ]
+  then
+    echo "3.5.0"
+  fi
+  if [ $1 -eq 4 ]
+  then
+    echo "4.5.1"
+  fi
+}
+
 function solrfolder() {
   if [ $1 -eq 3 ]
   then
@@ -435,9 +446,10 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 zendesk_ticket="${1:-x}"
 core="${2:-x}"
 files="${3:-x}"
+zendesk_ticket_url="https://acquia.zendesk.com/agent/tickets/${zendesk_ticket}"
 
 cat <<EOF
-       Ticket: $zendesk_ticket
+       Ticket: $zendesk_ticket ($zendesk_ticket_url)
          Core: $core
         Files: $files
     no_deploy: $NO_DEPLOY
@@ -682,7 +694,14 @@ cat $summary_file
 # Generate patch
 diff_file="$tmpdir/${core}-${date}-changes.diff"
 echo "  Writing patch file to $diff_file"
-git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >$diff_file
+echo "" >$diff_file
+#echo "Acquia Support ticket #${zendesk_ticket}" >> $diff_file
+#echo "  Diff file for ${core}, date ${date}" >>$diff_file
+#echo "====================================================" >>$diff_file
+#echo "Git summary of changes to configuration files:" >>$diff_file
+#echo "  Key: (+) lines added, (-) lines deleted" >>$diff_file
+#echo "  Note: Files in configuration that had no changes don't show in the list." >>$diff_file
+git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
 
 #####################################
 # Try to check dependencies
@@ -726,6 +745,7 @@ fi
 echo "Putting configuration into solr local instance at $solr_dir."
 cd $solr_dir/example
 solrconf_folder=solr/conf
+solr_full_version=`solrfullversion $solr_version`
 if [ $solr_version -eq 4 ]
 then
   solrconf_folder=solr/collection1/conf
@@ -739,9 +759,9 @@ fi
 rm ${solrconf_folder} 2>/dev/null
 ln -s $origconf_dir ${solrconf_folder}
 
-solrlog=$tmpdir/solr-startup.log
-errlog=$tmpdir/solr-startup-errors.log
-printf "Starting solr..."
+solrlog=$tmpdir/${core}-${date}-solr-startup.log
+errlog=$tmpdir/${core}-${date}-solr-startup-errors.log
+printf "Starting solr ${solr_full_version}..."
 # Log Solr starting output
 java -jar start.jar >$solrlog 2>&1 &
 # Kill solr after 4 seconds
@@ -772,6 +792,8 @@ then
   echo "  $errlog"
   echo "And the complete Solr startup log (errors + nonerrors) is at:"
   echo "  $solrlog"
+  echo "Diff summary:"
+  echo "  $diff_file"
   echo ""
 
 
@@ -779,16 +801,17 @@ then
   then
     echo "CUSTOMER INTERVENTION NEEDED:"
     echo "Please paste this response into the ticket, attaching the above files:"
+    echo "  $zendesk_ticket_url"
     cat <<EOF
 - - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
 Hello,
 
-Unfortunately, when testing the files you have submitted on this ticket, the Solr index ${core} would not start up properly.
+Unfortunately, when testing the files you have submitted on this ticket, the Solr core ${core} (running Solr ${solr_full_version}) would not start up properly.
 
 We ask you to:
 
 * Review the attached Solr startup logs provided by our testing.
-* Re-test your submissions on a same-versioned local Solr instance, making sure you:
+* Re-test your submissions on a local Solr instance (version ${solr_full_version}), making sure you:
   * First, get the current configuration files from your Acquia-hosted index and install them onto your local Solr testing instance
   * Then, apply the changes you attached to this same ticket
 * After you correct any errors, please attach every file you want changed onto this ticket, confirming the Solr Index ID or URL.
@@ -798,11 +821,12 @@ Note that you can obtain the current Solr configuration files at any time via Dr
 * If using apachesolr.module: go to \`/admin/reports/apachesolr/\` and click on a server. Then, use the "Configuration Files" tab to access the Solr configuration files.
 * If using search_api_solr.module: go to \`/admin/config/search/search_api\` and click on a server name. Then, use the "Files" tab to access the Solr configuration files.
 
-If you require documentation on setting up a local Solr instance for testing, please see: https://docs.acquia.com/articles/how-test-custom-solr-schema-file-locally
+If you require documentation on setting up a local Solr instance (version ${solr_full_version}) for testing, please see: https://docs.acquia.com/articles/how-test-custom-solr-schema-file-locally
 
 ${COLOR_RED}- - - - - - - - - - - - - - - - - - - - -${COLOR_NONE}
 EOF
     echo "Severe messages found. Exiting."
+    pausemsg
     exit 1
   else
     echo "${COLOR_YELLOW}Only warnings found... please check before continuing.${COLOR_NONE}"
@@ -967,7 +991,7 @@ file_to_clipboard $ticket_response_file
 cat <<EOF
 
 Please use this as a ticket reply
-  on https://acquia.zendesk.com/agent/tickets/${zendesk_ticket}
+  on ${zendesk_ticket_url}
 
 - - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
 EOF
@@ -986,4 +1010,5 @@ CHOOSE your Ticket's Root Cause:
 
 EOF
 
+pausemsg
 exit 0
