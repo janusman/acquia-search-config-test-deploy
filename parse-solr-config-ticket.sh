@@ -161,7 +161,11 @@ echo ""
 echo "  You can now run these scripts in this folder to process each mentioned index:"
 ls *.sh | awk '{print "    " $0 }'
 
-echo 'for nom in *.sh; do bash $nom; done' >run-all && chmod +x run-all
+echo '#!/bin/sh' >run-all
+echo '#auto_comment="--auto-comment" # Uncomment to auto-comment' >>run-all
+echo '#no_deploy="--nodeploy" # Uncomment to auto-comment' >>run-all
+cat *.sh |grep check |awk '{ print $0 " \$auto_comment \$no_deploy" }' >>run-all
+chmod +x run-all
 echo ""
 echo "  Or, you can process all cores now by typing this:"
 echo "      cd z${ticket}; ./run-all"

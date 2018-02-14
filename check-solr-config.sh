@@ -812,7 +812,7 @@ We ask you to:
 
 * Review the attached Solr startup logs provided by our testing.
 * Re-test your submissions on a local Solr instance (version ${solr_full_version}), making sure you:
-  * First, get the current configuration files from your Acquia-hosted index and install them onto your local Solr testing instance
+  * First, get the current configuration files from your Acquia-hosted index and install them onto your local Solr testing instance (read below on how to get these files)
   * Then, apply the changes you attached to this same ticket
 * After you correct any errors, please attach every file you want changed onto this ticket, confirming the Solr Index ID or URL.
 
