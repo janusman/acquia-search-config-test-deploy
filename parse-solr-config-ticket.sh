@@ -140,6 +140,9 @@ do
   fi
 done
 
+# Remove any __MACOSX folders
+find -type d -name __MACOSX -exec rm -rf {} 2>/dev/null \;
+
 # Change any .xml.txt files to .xml
 for nom in *.xml.txt
 do
