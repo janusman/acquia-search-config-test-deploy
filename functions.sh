@@ -22,7 +22,8 @@ function pausemsg() {
 }
 
 function errmsg() {
-  echo "${COLOR_RED}$1${COLOR_NONE}"
+  echo $0 >>$tmpout_errors
+  echo "${COLOR_RED}$1${COLOR_NONE}" 
 }
 
 function warnmsg() {

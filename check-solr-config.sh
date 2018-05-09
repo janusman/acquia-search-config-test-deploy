@@ -39,13 +39,14 @@ tmpout=${BASE_DIR}/tmp/check.tmp
 tmpout2=${BASE_DIR}/tmp/check.tmp2
 tmpout_governor=${BASE_DIR}/tmp/check.tmp3
 date=`date +%Y-%m-%d`
+tmpout_errors=${BASE_DIR}/tmp/errors.tmp.$$
 
 # Include ##############
 . $BASE_DIR/functions.sh
 
 # Functions  #########################
 function governor-cli() {
-  php $PATH_TO_GOVERNOR_PHAR $@
+  $PATH_TO_GOVERNOR_PHAR $@
 }
 
 function solrfullversion() {
@@ -268,6 +269,87 @@ function deploy_files_into_governor() {
 
   rm -rf $LOCAL_xfer_folder
 }
+
+
+function ticket_reply_interactive() {
+  zendesk_ticket=$1
+  ticket_response_file=$2
+  attachment_file=$3
+  public_private_flag=$4
+
+  # Offer option to reply into zendesk directly, if we have proper config.
+  if [ -r $BASE_DIR/creds.txt ]
+  then
+    if [ ${AUTO_COMMENT:-0} -eq 1 ]
+    then
+      echo "${COLOR_YELLOW}Auto-comment flag enabled${COLOR_NONE}"
+      next_step=auto_comment
+    else
+      # Prompt for next step
+      PS3='Please select how you want to reply to customer: '
+      options=("Have this script automatically post a reply into Zendesk for you" "You will manually post a reply")
+      select opt in "${options[@]}"
+      do
+        case $opt in
+          "Have this script automatically post a reply into Zendesk for you")
+            next_step=auto_comment
+            break;
+            ;;
+          "You will manually post a reply")
+            next_step=manual_comment
+            break;
+            ;;
+          *) echo invalid option;;
+        esac
+      done
+    fi
+  else
+    warnmsg "Note: If you had a creds.txt file at $BASE_DIR then this script could post a reply directly into Zendesk."
+    next_step=manual_comment
+  fi
+
+  ## Attempt to do ticket reply automatically
+  if [ $next_step = 'auto_comment' ]
+  then
+    cmd="php -f $PATH_TO_ZD_POST_COMMENT_SCRIPT $zendesk_ticket $ticket_response_file $attachment_file $public_private_flag"
+    echo "Running command: $cmd"
+    $cmd
+    # Handle errors
+    if [ $? -gt 0 ]
+    then
+      errmsg "ERROR: Could not post comment/file automatically into ticket."
+      errmsg "       PLEASE POST COMMENT MANUALLY below!"
+    else
+      echo "${COLOR_GREEN}Posted comment successfully!${COLOR_NONE}"
+      echo ""
+      return 0
+    fi
+  fi
+
+  ## Ticket reply will be done manually.
+  # Copy ticket response to Clipboard
+  file_to_clipboard $ticket_response_file
+  cat <<EOF
+
+Please use this as a ticket reply
+  on ${zendesk_ticket_url}
+
+- - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
+EOF
+
+  cat $ticket_response_file
+  cat <<EOF
+
+${COLOR_NONE}- - - - - - - - - - - - - - - - - - - - -
+
+ATTACH this file to the ticket:
+  ${COLOR_GRAY}$attachment_file${COLOR_NONE}
+
+EOF
+
+  pausemsg
+}
+
 
 ############################################
 # Start!
@@ -504,6 +586,8 @@ newfiles_dir="$tmpdir/newfiles"
 mkdir -p $newfiles_dir
 realfilestoupload_dir="$tmpdir/upload_files"
 mkdir -p $realfilestoupload_dir
+ticket_response_file="${tmpdir}/ticket-response-$core.txt"
+
 
 # If 'files' is actually a folder, use that
 if [ -d $files ]
@@ -585,22 +669,26 @@ done
 if [ $error -eq 1 ]
 then
   errmsg "Fatal errors found, exiting!"
-  cat <<EOF
-Possible ticket reply:
--------
-
+  echo "Possible ticket reply for $zendesk_ticket_url:"
+  echo "--------------------"
+  cat <<EOF >$ticket_response_file
 Hello,
 
-We could not deploy your configuration, because of the following error thrown by our checking scripts:
+We could not deploy your configuration into ${core}, because of the following error(s) thrown by our checking scripts:
 
 \`\`\`
-paste-errors-here
+EOF
+cat $tmpout_errors >>$ticket_response_file
+cat <<EOF >>$ticket_response_file
 \`\`\`
 
 Can you please verify this file? We recommend you check it does work and causes the behavior you intended in a local Solr instance.
-
--------
 EOF
+  echo "--------------------"
+
+  # Trigger interactive ticket reply
+  ticket_reply_interactive $zendesk_ticket $ticket_response_file $tmpout_errors public
+
   exit 1
 else
   echo "All files OK!"
@@ -718,8 +806,8 @@ comm -23 /tmp/referenced-files.txt /tmp/existing-files.txt >$tmpout
 
 if [ `grep -c . $tmpout` -gt 0 ]
 then
-  errmsg "POSSIBLE missing required files have been detected in configuration:"
-  cat $tmpout
+  files=`cat $tmpout |tr '\012\015' ' '`
+  errmsg "POSSIBLE missing required files have been detected in configuration: $files"
   pausemsg
 else
   echo "OK! Couldn't detect references to missing files."
@@ -794,27 +882,24 @@ then
   echo "  $solrlog"
   echo "Diff summary:"
   echo "  $diff_file"
-  echo ""
+  echo "${COLOR_NONE}- - - - - - - - - - - - - - - - - - - - -"
 
 
   if [ `egrep -c 'SEVERE|ERROR' $errlog` -gt 0 ]
   then
-    echo "CUSTOMER INTERVENTION NEEDED:"
-    echo "Please paste this response into the ticket, attaching the above files:"
-    echo "  $zendesk_ticket_url"
-    cat <<EOF
-- - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
+    header "PROBLEMS DETECTED: CUSTOMER INTERVENTION NEEDED:"
+    cat <<EOF >$ticket_response_file
 Hello,
 
-Unfortunately, when testing the files you have submitted on this ticket, the Solr core ${core} (running Solr ${solr_full_version}) would not start up properly.
+Unfortunately, when testing the files you have submitted on this ticket, the Solr core ${core} (running Solr ${solr_full_version}) would not start up properly. Attached find Solr startup logs.
 
 We ask you to:
 
 * Review the attached Solr startup logs provided by our testing.
 * Re-test your submissions on a local Solr instance (version ${solr_full_version}), making sure you:
-  * First, get the current configuration files from your Acquia-hosted index and install them onto your local Solr testing instance (read below on how to get these files)
-  * Then, apply the changes you attached to this same ticket
-* After you correct any errors, please attach every file you want changed onto this ticket, confirming the Solr Index ID or URL.
+  * 1) get the current configuration files from your Acquia-hosted index and install them onto your local Solr testing instance (read below on how to get these files)
+  * 2) apply the changes you attached to this same ticket
+* After you correct any errors, please re-attach every file changed between step 1 and 2 onto this ticket, confirming the Solr Index ID(s) or URL(s) where we should deploy the changes to.
 
 Note that you can obtain the current Solr configuration files at any time via Drupal, using either of these methods:
 
@@ -823,9 +908,12 @@ Note that you can obtain the current Solr configuration files at any time via Dr
 
 If you require documentation on setting up a local Solr instance (version ${solr_full_version}) for testing, please see: https://docs.acquia.com/articles/how-test-custom-solr-schema-file-locally
 
-${COLOR_RED}- - - - - - - - - - - - - - - - - - - - -${COLOR_NONE}
 EOF
-    echo "Severe messages found. Exiting."
+
+    # Interactive/automatic ticket reply
+    ticket_reply_interactive $zendesk_ticket $ticket_response_file $solrlog public
+
+    echo "${COLOR_RED}Severe messages found. Exiting.${COLOR_NONE}"
     pausemsg
     exit 1
   else
@@ -911,7 +999,6 @@ echo "Pinging done!"
 # Output canned response
 header "LAST STEP: Send response and file(s) via ticket $zendesk_ticket"
 # Build ticket response
-ticket_response_file="${tmpdir}/ticket-response-$core.txt"
 cat <<EOF >$ticket_response_file
 Hello,
 
@@ -935,80 +1022,8 @@ Note that you can obtain the current Solr configuration files at any time via Dr
 
 EOF
 
-# Offer option to reply into zendesk directly, if we have proper config.
-if [ -r $BASE_DIR/creds.txt ]
-then
-  if [ $AUTO_COMMENT -eq 1 ]
-  then
-    echo "${COLOR_YELLOW}Auto-comment flag enabled${COLOR_NONE}"
-    next_step=auto_comment
-  else
-    # Prompt for next step
-    PS3='Please select how you want to reply to customer: '
-    options=("Have this script automatically post a reply into Zendesk for you" "You will manually post a reply")
-    select opt in "${options[@]}"
-    do
-      case $opt in
-        "Have this script automatically post a reply into Zendesk for you")
-          next_step=auto_comment
-          break;
-          ;;
-        "You will manually post a reply")
-          next_step=manual_comment
-          break;
-          ;;
-        *) echo invalid option;;
-      esac
-    done
-  fi
-else
-  warnmsg "Note: If you had a creds.txt file at $BASE_DIR then this script could post a reply directly into Zendesk."
-  next_step=manual_comment
-fi
+ticket_reply_interactive $zendesk_ticket $ticket_response_file $diff_file public
 
-## Attempt to do ticket reply automatically
-if [ $next_step = 'auto_comment' ]
-then
-  echo "Running command:  php -f $PATH_TO_ZD_POST_COMMENT_SCRIPT $zendesk_ticket $ticket_response_file $diff_file public"
-  php -f $PATH_TO_ZD_POST_COMMENT_SCRIPT $zendesk_ticket $ticket_response_file $diff_file public
-  # Handle errors
-  if [ $? -gt 0 ]
-  then
-    errmsg "ERROR: Could not post comment/file automatically into ticket."
-    errmsg "       PLEASE POST COMMENT MANUALLY below!"
-  else
-    echo "${COLOR_GREEN}Posted comment successfully!${COLOR_NONE}"
-    echo ""
-    echo "NOTE: If you've finished ALL requested changes,"
-    echo "      you should go to the ticket and mark it 'Solved'."
-    exit 0
-  fi
-fi
-
-## Ticket reply will be done manually.
-# Copy ticket response to Clipboard
-file_to_clipboard $ticket_response_file
-cat <<EOF
-
-Please use this as a ticket reply
-  on ${zendesk_ticket_url}
-
-- - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
-EOF
-
-cat $ticket_response_file
-
-cat <<EOF
-
-${COLOR_NONE}- - - - - - - - - - - - - - - - - - - - -
-
-ATTACH this file to the ticket:
-  ${COLOR_GRAY}$diff_file${COLOR_NONE}
-
-CHOOSE your Ticket's Root Cause:
-  ${COLOR_GRAY}Acquia Search > Custom Config Files${COLOR_NONE}
-
-EOF
-
-pausemsg
+echo "NOTE: If you've finished ALL requested changes,"
+echo "      you should go to the ticket and mark it 'Solved'."
 exit 0
