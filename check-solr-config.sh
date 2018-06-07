@@ -382,7 +382,7 @@ fi
 where=`which governor.phar`
 if [ $? -eq 0 ]
 then
-  cp $where $PATH_TO_GOVERNOR_PHAR
+  cp $where $PATH_TO_GOVERNOR_PHAR 2>/dev/null
 fi
 
 if [ ! -r $PATH_TO_GOVERNOR_PHAR ]
@@ -670,8 +670,6 @@ done
 if [ $error -eq 1 ]
 then
   errmsg "Fatal errors found, exiting!"
-  echo "Possible ticket reply for $zendesk_ticket_url:"
-  echo "--------------------"
   cat <<EOF >$ticket_response_file
 Hello,
 
@@ -685,7 +683,6 @@ cat <<EOF >>$ticket_response_file
 
 Can you please verify this file? We recommend you check it does work and causes the behavior you intended in a local Solr instance.
 EOF
-  echo "--------------------"
 
   # Trigger interactive ticket reply
   ticket_reply_interactive $zendesk_ticket $ticket_response_file $tmpout_errors public
