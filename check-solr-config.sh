@@ -909,7 +909,7 @@ Note that you can obtain the current Solr configuration files at any time via Dr
 * If using apachesolr.module: go to \`/admin/reports/apachesolr/\` and click on a server. Then, use the "Configuration Files" tab to access the Solr configuration files.
 * If using search_api_solr.module: go to \`/admin/config/search/search_api\` and click on a server name. Then, use the "Files" tab to access the Solr configuration files.
 
-If you require documentation on setting up a local Solr instance (version ${solr_full_version}) for testing, please see: https://docs.acquia.com/articles/how-test-custom-solr-schema-file-locally
+If you require documentation on setting up a local Solr instance (version ${solr_full_version}) for testing, please see: https://support.acquia.com/hc/en-us/articles/360004423034-How-to-test-a-custom-Solr-schema-file-locally
 
 EOF
 
