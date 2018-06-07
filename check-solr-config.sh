@@ -869,7 +869,10 @@ fi
 
 header "Results of Local Solr testing"
 
-if [ `grep -c . $errlog` -gt 0 ]
+# Don't care about some warnings like:
+#   "No queryConverter defined, using default converter"
+#   "WARNING: Synonyms loaded with { ... snip ... } has empty rule set!
+if [ `egrep -v "using default converter|has empty rule set" $errlog | egrep -c 'SEVERE|WARN|ERROR'` -gt 0 ]
 then
   echo ""
   errmsg "There were Solr startup warnings/errors! Relevant log lines follow:"
