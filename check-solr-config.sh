@@ -38,6 +38,7 @@ mkdir ${BASE_DIR}/tmp 2>/dev/null
 tmpout=${BASE_DIR}/tmp/check.tmp
 tmpout2=${BASE_DIR}/tmp/check.tmp2
 tmpout_governor=${BASE_DIR}/tmp/check.tmp3
+tmpout_governor_ping=${BASE_DIR}/tmp/check.tmp4
 date=`date +%Y-%m-%d`
 tmpout_errors=${BASE_DIR}/tmp/errors.tmp.$$
 
@@ -114,7 +115,7 @@ function ascopyconf() {
 
 # Wait until a core comes down and then back up.
 function aswaitforcycle() {
-  governor-cli index:ping $1 |php -r '
+  cat $tmpout_governor_ping |php -r '
   function wait_down_up($url) {
     echo "Waiting for instance at $url to Cycle (come down and back up)\n";
     # Check up
@@ -704,6 +705,8 @@ fi
 
 # Get index information
 header "Index information for $core"
+# Prefetch the URLs needed for pinging for faster up/down check later
+governor-cli index:ping $core >$tmpout_governor_ping
 governor-cli index:info $core >$tmpout_governor
 if [ $? -gt 0 ]
 then
