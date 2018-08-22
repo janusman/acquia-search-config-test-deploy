@@ -804,7 +804,7 @@ cat schema*.xml solrconfig*.xml | sed -e '/<!--/,/-->/d' |egrep --color=none -o 
 # Report which files **might** be missing (not guaranteed to catch all missing files!)
 comm -23 /tmp/referenced-files.txt /tmp/existing-files.txt >$tmpout
 
-if [ `grep -c . $tmpout` -gt 0 ]
+if [ `grep -cv "ThisFileDoesNotExist-ItsJustAHack.txt" $tmpout` -gt 0 ]
 then
   files=`cat $tmpout |tr '\012\015' ' '`
   errmsg "POSSIBLE missing required files have been detected in configuration: $files"
@@ -872,7 +872,7 @@ header "Results of Local Solr testing"
 # Don't care about some warnings like:
 #   "No queryConverter defined, using default converter"
 #   "WARNING: Synonyms loaded with { ... snip ... } has empty rule set!
-if [ `egrep -v "using default converter|has empty rule set" $errlog | egrep -c 'SEVERE|WARN|ERROR'` -gt 0 ]
+if [ `egrep -v "using default converter|has empty rule set|ThisFileDoesNotExist-ItsJustAHack.txt|Multiple default requestHandler registered" $errlog | egrep -c 'SEVERE|WARN|ERROR'` -gt 0 ]
 then
   echo ""
   errmsg "There were Solr startup warnings/errors! Relevant log lines follow:"
