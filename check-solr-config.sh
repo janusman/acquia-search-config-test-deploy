@@ -615,6 +615,13 @@ do
     then
       warnmsg "WARNING: $file is an empty file"
     else
+
+      # Flag what could be wrong extensions
+      if [ `php -r 'echo substr_count("'$file'", ".");'` -gt 1 ]
+      then
+        warnmsg "WARNING: $file may have wrong extension!"
+      fi
+
       # Check file encoding is UTF (or something that passes for UTF)
       cat $file |php -r '$str = stream_get_contents(STDIN); $is_utf = mb_detect_encoding($str, "UTF-8", TRUE); exit ($is_utf ? 0 : 1);'
       if [ $? -eq 1 ]
@@ -852,11 +859,29 @@ errlog=$tmpdir/${core}-${date}-solr-startup-errors.log
 printf "Starting solr ${solr_full_version}..."
 # Log Solr starting output
 java -jar start.jar >$solrlog 2>&1 &
-# Kill solr after 4 seconds
+# Kill solr after max_time seconds maximum
 background_pid=$!
-printf " waiting..."
-sleep 6
-echo " stopping process."
+echo -n "${COLOR_YELLOW} waiting..."
+max_time=60
+regex="Registered new searcher|Started SocketConnector@0.0.0.0:8983"
+for counter in `seq 1 $max_time`
+do
+  sleep 1
+  if [ `tail -200 $solrlog |egrep -c "$regex"` -gt 0 ]
+  then
+    echo "done in $counter seconds!"
+    break
+  fi
+  echo -n '.'
+done
+if [ $counter -eq $max_time ]
+then
+  echo "${COLOR_RED}TIMEOUT at $counter seconds..."
+  warnmsg "POSSIBLY the script needs to have more than $max_time seconds to let Solr start up (script detects that Solr finished startup based on the regex '$regex')"
+  exit 1
+fi
+
+echo "${COLOR_NONE}Stopping process $background_pid."
 kill $background_pid
 
 # Parse the startup log.
