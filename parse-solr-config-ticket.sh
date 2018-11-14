@@ -103,7 +103,7 @@ $final_files = array();
 system("mkdir ticketfiles 2>/dev/null");
 foreach ($attachments as $filename => $url) {
 
-  if (! preg_match("/.*\.(txt|xml|zip)$/", $filename)) {
+  if (! preg_match("/.*\.(txt|xml|zip|gz)$/", $filename)) {
     echo "Skipping download of $filename...\n";
     continue;
   }
@@ -131,12 +131,20 @@ foreach ($cores as $core) {
 # unzip any applicable files
 folder=`pwd`
 cd ticketfiles
-for nom in *zip
+for nom in *.zip
 do
   if [ "$nom" != "*zip" ]
   then
     echo "Unzipping $nom..."
     unzip $nom && rm $nom
+  fi
+done
+for nom in *.gz
+do
+  if [ "$nom" != "*gz" ]
+  then
+    echo "Un-gzipping $nom..."
+    gzip -d $nom
   fi
 done
 
@@ -152,6 +160,12 @@ do
     echo "Renaming $nom ==> $name_without_txt"
     mv "$nom" $name_without_txt
   fi
+done
+for nom in *_
+do
+  new_name=`echo "$nom" | sed -e 's/_$//'`
+  echo "Renaming $nom ==> $new_name"
+  mv "$nom" $new_name
 done
 
 cd ..
