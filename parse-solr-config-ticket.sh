@@ -128,45 +128,46 @@ foreach ($cores as $core) {
 }
 ' | egrep --color '^|[A-Z][A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9][0-9][0-9]*(\.[a-z0][a-z1][a-zA-Z0-9]*\.[a-zA-Z0-9]*|_[a-zA-Z0-9]*|)'
 
-# unzip any applicable files
 folder=`pwd`
 cd ticketfiles
-for nom in *.zip
-do
-  if [ "$nom" != "*zip" ]
-  then
-    echo "Unzipping $nom..."
-    unzip $nom && rm $nom
-  fi
-done
-for nom in *.gz
-do
-  if [ "$nom" != "*gz" ]
-  then
-    echo "Un-gzipping $nom..."
-    gzip -d $nom
-  fi
-done
+
+# Unzip and un-gzip any applicable files
+find -name "*.zip" -exec sh -c 'echo "FOUND zip file {}; running unzip..."; unzip "{}" && rm "{}"' \;
+find -name "*.ZIP" -exec sh -c 'echo "FOUND zip file {}; running unzip..."; unzip "{}" && rm "{}"' \;
+find -name "*gz" -exec sh -c 'echo "FOUND gz file {}; running gzip -d..."; gzip -d "{}"' \;
 
 # Remove any __MACOSX folders
 find -type d -name __MACOSX -exec rm -rf {} 2>/dev/null \;
 
-# Change any .xml.txt files to .xml
-for nom in *.xml.txt
+# Remove trailing _ in files
+for nom in *_
 do
-  if [ "$nom" != "*.xml.txt" ]
+  if [ "$nom" != "*_" ]
   then
-    name_without_txt=`echo "$nom" | sed -e 's/.txt$//'`
+    new_name=`echo "$nom" | sed -e 's/_$//'`
+    echo "Renaming $nom ==> $new_name"
+    mv "$nom" $new_name
+  fi
+done
+
+# Change any .xml.txt files to .xml
+for nom in *.xml.txt *.xml_.txt
+do
+  if [ "$nom" != "*.xml.txt" -a "$nom" != "*.xml_.txt" ]
+  then
+    name_without_txt=`echo "$nom" | sed -e 's/[_]*.txt$//'`
     echo "Renaming $nom ==> $name_without_txt"
     mv "$nom" $name_without_txt
   fi
 done
-for nom in *_
-do
-  new_name=`echo "$nom" | sed -e 's/_$//'`
-  echo "Renaming $nom ==> $new_name"
-  mv "$nom" $new_name
-done
+
+# Rename any schema.txt files to schema.xml (if there are no schema.xml files already)
+if [ `find -name schema.txt |wc -l` -eq 1 -a `find -name schema.xml |wc -l` -eq 0 ]
+then
+  echo "Found schema.txt ... renaming to schema.xml"
+  find -name schema.txt -exec mv {} schema.xml \;
+fi
+
 
 cd ..
 header "DONE"
