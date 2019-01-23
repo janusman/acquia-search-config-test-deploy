@@ -22,7 +22,7 @@ function pausemsg() {
 }
 
 function errmsg() {
-  echo $0 >>$tmpout_errors
+  echo $1 >>$tmpout_errors
   echo "${COLOR_RED}$1${COLOR_NONE}" 
 }
 
