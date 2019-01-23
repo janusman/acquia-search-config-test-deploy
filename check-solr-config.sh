@@ -617,7 +617,7 @@ do
     else
 
       # Flag what could be wrong extensions
-      if [ `php -r 'echo substr_count("'$file'", ".");'` -gt 1 ]
+      if [ `php -r 'echo substr_count(basename("'$file'"), ".");'` -gt 1 ]
       then
         warnmsg "WARNING: $file may have wrong extension!"
       fi
@@ -648,6 +648,14 @@ do
         if [ $? -eq 1 ]
         then
           errmsg "ERROR: File $file is not valid XML."
+          # Run xmllint if available
+          which xmllint >/dev/null 2>&1
+          if [ $? -eq 0 ]
+          then
+            echo "XML checker flagged these errors:" >>$tmpout_errors
+            xmllint $file >>$tmpout_errors 2>&1
+            echo "---------------------------------" >>$tmpout_errors
+          fi
           error=1
         fi
       fi
@@ -662,7 +670,7 @@ do
         # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
         if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
         then
-          errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that isn't a comment, it must use the , or => syntax"
+          errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that is not a comment, it must use the correct syntax"
           error=1
         fi
       fi
