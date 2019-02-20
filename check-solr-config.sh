@@ -469,6 +469,7 @@ cd $cur_folder
 POSITIONAL=()
 NO_DEPLOY=0
 AUTO_COMMENT=0
+NO_PING=0
 while [[ $# -gt 0 ]]
 do
   key="$1"
