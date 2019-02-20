@@ -676,11 +676,15 @@ do
       # Check synonyms*.txt format (only non-zero-sized files)
       if [ `echo $file | egrep -c 'synonyms.*txt'` -eq 1 ]
       then
-        # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
-        if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
+        # Do not check syntax for 0-lined files (could be just \r\n)
+        if [ `wc -l $file |cut -f1 -d' '` -gt 1 ]
         then
-          errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that is not a comment, it must use the correct syntax"
-          error=1
+          # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
+          if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
+          then
+            errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that is not a comment, it must use the correct syntax"
+            error=1
+          fi
         fi
       fi
     fi
