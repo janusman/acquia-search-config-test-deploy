@@ -40,7 +40,7 @@ tmpout2=${BASE_DIR}/tmp/check.tmp2
 tmpout_governor=${BASE_DIR}/tmp/check.tmp3
 tmpout_governor_ping=${BASE_DIR}/tmp/check.tmp4
 date=`date +%Y-%m-%d`
-tmpout_errors=${BASE_DIR}/tmp/errors.tmp.$$
+tmpout_errors=${BASE_DIR}/tmp/errors.tmp
 
 # Include ##############
 . $BASE_DIR/functions.sh
@@ -609,11 +609,12 @@ fi
 # Check that incoming files are UTF-8
 header "Checking incoming file format"
 
+echo "" >$tmpout_errors
 error=0
 for file in $files
 do
   copy=1
-  if [ ! -r $file ]
+  if [ ! -r "$file" ]
   then
     errmsg "Error: File $file not found"
     error=1
