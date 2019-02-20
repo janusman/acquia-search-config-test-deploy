@@ -724,8 +724,7 @@ if [ -f $newfiles_dir/solrconfig.xml ]
 then
   warnmsg "Warning: provided solrconfig.xml as a file"
   warnmsg "  Acquia usually does NOT provision solrconfig.xml"
-  errmsg  "  If you don't want to continue, please press CTRL-C"
-  pausemsg
+  warnmsg "  Further down we will check if the file DOES change anything, and if so pause for your input."
 fi
 
 # Get index information
@@ -818,6 +817,74 @@ echo "" >$diff_file
 #echo "  Key: (+) lines added, (-) lines deleted" >>$diff_file
 #echo "  Note: Files in configuration that had no changes don't show in the list." >>$diff_file
 git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
+
+
+## Special case: solrconfig.xml has changes
+## Interactively determine if we are going to put it in or not
+if [ `grep "solrconfig.xml  *|" $diff_file |awk '{ print $3 }'` -gt 0 ]
+then
+  warnmsg "Warning: solrconfig.xml was provided, and includes changes!"
+  warnmsg "  Acquia usually does NOT provision solrconfig.xml"
+  warnmsg "  Changes follow:"
+  git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --color solrconfig.xml >$tmpout
+  cat $tmpout
+  echo ""
+
+  # Prompt for next step
+  PS3='Please select from the options below: '
+  options=("Accept the changes AND continue" "Omit this file AND add a note to the attached diff file AND continue" "Reject file AND stop script AND show a canned response")
+  select opt in "${options[@]}"
+  do
+    case $opt in
+      "Accept the changes AND continue")
+        next_step=continue
+        break;
+        ;;
+      "Omit this file AND add a note to the attached diff file AND continue")
+        # Remove file
+        rm solrconfig.xml
+        # Re-calculate diff
+        echo "" >$diff_file
+        echo "NOTE: solrconfig.xml was submitted but REMOVED during this process." >$diff_file
+        git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
+
+        next_step=continue
+        break;
+        ;;
+      "Reject file AND stop script AND show a canned response")
+          cat <<EOF >$ticket_response_file
+Hello,
+
+Unfortunately, you have included changes to \`solrconfig.xml\` which would negatively impact the underlying architecture of your Solr instance ${core} (running Solr ${solr_full_version}).
+
+We ask you to:
+
+* Only submit the relevant changes to your solrconfig.xml file OR completely avoid touching this file and use \`solrconfig_extra.xml\` instead.
+* Re-test your submissions on a local Solr instance (version ${solr_full_version}), making sure you:
+  * 1) get the current configuration files from your Acquia-hosted index $core and install them onto your local Solr testing instance (read below on how to get these files)
+  * 2) apply only the needed changes
+* After you correct any errors, please re-attach every file changed between step 1 and 2 onto this ticket, confirming the Solr Index ID(s) or URL(s) where we should deploy the changes to.
+
+Note that you can obtain the current Solr configuration files at any time via Drupal, using either of these methods:
+
+* If using apachesolr.module: go to \`/admin/reports/apachesolr/\` and click on a server. Then, use the "Configuration Files" tab to access the Solr configuration files.
+* If using search_api_solr.module: go to \`/admin/config/search/search_api\` and click on a server name. Then, use the "Files" tab to access the Solr configuration files.
+
+If you require documentation on setting up a local Solr instance (version ${solr_full_version}) for testing, please see: https://support.acquia.com/hc/en-us/articles/360004423034-How-to-test-a-custom-Solr-schema-file-locally
+
+EOF
+
+        # Interactive/automatic ticket reply
+        ticket_reply_interactive $zendesk_ticket $ticket_response_file $tmpout public
+
+        exit 0;
+        break;
+        ;;
+      *) echo invalid option;;
+    esac
+  done
+
+fi
 
 #####################################
 # Try to check dependencies
