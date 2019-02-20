@@ -497,6 +497,9 @@ do
     --auto-comment|--autocomment)
       AUTO_COMMENT=1;
       ;;
+    --no-ping|--noping)
+      NO_PING=1;
+      ;;
     --*)
       # error unknown (long) option $1
       echo "  ${COLOR_RED}Warning: Unknown option $1${COLOR_NONE}"
@@ -550,16 +553,21 @@ then
   to edit the index node on http://governor.acquia-search.com/
 
 ${COLOR_YELLOW}Usage:${COLOR_NONE}
-  $0 zd-ticket-number index-id file [--no-deploy]
-  $0 zd-ticket-number index-id "file1 file2 file3" [--no-deploy]
+  $0 zd-ticket-number index-id file [options]
+  $0 zd-ticket-number index-id folder [options]
+  $0 zd-ticket-number index-id "file1 file2 file3" [options]
 
 Options:
      [--no-deploy] : Skips the deployment steps.
+       [--no-ping] : Skips checking if the Solr core cycles (comes down and back up).
   [--auto-comment] : Auto-posts public comment to Ticket if everything looks OK.
 
 ${COLOR_YELLOW}Examples:${COLOR_NONE}
   ${COLOR_GRAY}# Check synonyms.txt from current folder, ticket Z123456, for core WXYZ-12345.dev.default${COLOR_NONE}
   ./check-solr-config.sh 123456 WXYZ-12345.dev.default synonyms.txt
+
+  ${COLOR_GRAY}# Check files from 'filesfolder' folder, ticket Z123456, for core WXYZ-12345.dev.default${COLOR_NONE}
+  ./check-solr-config.sh 123456 WXYZ-12345.dev.default filesfolder
 
   ${COLOR_GRAY}# Same as above, but multiple files.
   #   Mind the quotes!${COLOR_NONE}
@@ -1028,9 +1036,14 @@ EOF
 fi
 
 # Do pinging
-header "Waiting for Solr core to restart in master and slave"
-aswaitforcycle $core
-echo "Pinging done!"
+if [ "${NO_PING:-x}" -eq 1 ]
+then
+  warnmsg "--no-ping argument given, skipping this check."
+else
+  header "Waiting for Solr core to restart in master and slave"
+  aswaitforcycle $core
+  echo "Pinging done!"
+fi
 
 # Output canned response
 header "LAST STEP: Send response and file(s) via ticket $zendesk_ticket"
