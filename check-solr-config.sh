@@ -277,6 +277,28 @@ function ticket_reply_interactive() {
   ticket_response_file=$2
   attachment_file=$3
   public_private_flag=$4
+  
+  if [ ${NO_COMMENT:-0} -eq 1 ]
+  then
+    warnmsg "NO-COMMENT flag on, skipping"
+    cat <<EOF
+      
+  This would be the ticket comment on ${zendesk_ticket_url}
+
+- - - - - - - - - - - - - - - - - - - - -${COLOR_GRAY}
+EOF
+
+  cat $ticket_response_file
+  cat <<EOF
+
+${COLOR_NONE}- - - - - - - - - - - - - - - - - - - - -
+
+With this file attached to the ticket:
+  ${COLOR_GRAY}$attachment_file${COLOR_NONE}
+
+EOF
+    return 0
+  fi
 
   # Offer option to reply into zendesk directly, if we have proper config.
   if [ -r $BASE_DIR/creds.txt ]
@@ -351,6 +373,9 @@ EOF
   pausemsg
 }
 
+function get_governor_queue_length() {
+  curl -s https://governor.acquia-search.com/ACQUIA_SEARCH_GOVERNOR_MONITOR |php -r '$result = json_decode(trim(stream_get_contents(STDIN))); print_r($result->queue_items);'
+}
 
 ############################################
 # Start!
@@ -367,16 +392,6 @@ do
     ok=0
   fi
 done
-
-# Check Governor is actually not too backed up!
-governor_queue_items=`curl -s https://governor.acquia-search.com/ACQUIA_SEARCH_GOVERNOR_MONITOR |php -r '$result = json_decode(trim(stream_get_contents(STDIN))); print_r($result->queue_items);'`
-if [ $governor_queue_items -gt 10 ]
-then
-  errmsg "WARNING: Acquia's Search Governor is currently churning thru $governor_queue_items tasks..."
-  errmsg "  Response times might be slow for this process"
-  errmsg ""
-  pausemsg
-fi
 
 # Governor cli tool
 where=`which governor.phar`
@@ -469,6 +484,8 @@ cd $cur_folder
 POSITIONAL=()
 NO_DEPLOY=0
 AUTO_COMMENT=0
+AUTO_WAIT_GOVERNOR=0
+NO_COMMENT=0
 NO_PING=0
 while [[ $# -gt 0 ]]
 do
@@ -497,6 +514,12 @@ do
       ;;
     --auto-comment|--autocomment)
       AUTO_COMMENT=1;
+      ;;
+    --no-comment|--nocomment)
+      NO_COMMENT=1;
+      ;;
+    --auto-wait-governor)
+      AUTO_WAIT_GOVERNOR=1;
       ;;
     --no-ping|--noping)
       NO_PING=1;
@@ -536,11 +559,15 @@ files="${3:-x}"
 zendesk_ticket_url="https://acquia.zendesk.com/agent/tickets/${zendesk_ticket}"
 
 cat <<EOF
-       Ticket: $zendesk_ticket ($zendesk_ticket_url)
-         Core: $core
-        Files: $files
-    no_deploy: $NO_DEPLOY
- auto_comment: $AUTO_COMMENT
+  Ticket: $zendesk_ticket ($zendesk_ticket_url)
+    Core: $core
+   Files: $files
+ Options: ---------------------------------
+           no-deploy: $NO_DEPLOY
+        auto-comment: $AUTO_COMMENT
+          no-comment: $NO_COMMENT
+             no-ping: $NO_PING
+  auto-wait-governor: $AUTO_WAIT_GOVERNOR
 EOF
 
 # Output help if no index or files
@@ -575,6 +602,55 @@ ${COLOR_YELLOW}Examples:${COLOR_NONE}
   ./check-solr-config.sh 123456 WXYZ-12345.dev.default "stopword_pl.txt synonyms_pl.txt schema_extra_types.xml"
 EOF
   exit $ok
+fi
+
+# Check Governor is actually not too backed up!
+governor_queue_items=`get_governor_queue_length`
+if [ $governor_queue_items -gt 10 ]
+then
+  errmsg "WARNING: Acquia's Search Governor is currently churning thru $governor_queue_items tasks..."
+  
+  if [ ${AUTO_WAIT_GOVERNOR:-0} -eq 1 ]
+  then
+    warnmsg "  Option --auto-wait-governor is enabled"
+    next_step=wait
+  else
+    # Prompt for next step
+    PS3='Please select how you want to continue: '
+    options=("Wait until the queue clears" "Continue without waiting")
+    select opt in "${options[@]}"
+    do
+      case $opt in
+        "Wait until the queue clears")
+          next_step=wait
+          break;
+          ;;
+        "Continue without waiting")
+          errmsg "NOTE: Response times might be slow for this process"
+          next_step=continue
+          break;
+          ;;
+        *) echo invalid option;;
+      esac
+    done
+  fi
+
+  if [ $next_step = "wait" ]
+  then
+    echo -n "Waiting until Governor cools down..."
+    while [ 1 ]
+    do
+      governor_queue_items=`get_governor_queue_length`
+      if [ $governor_queue_items -gt 4 ]
+      then
+        echo -n "."
+        sleep 10
+      else
+        echo "queue now at $governor_queue_items, continuing!"
+        break;
+      fi
+    done
+  fi
 fi
 
 if [ $ok -eq 0 ]
