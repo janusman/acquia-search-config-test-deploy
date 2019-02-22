@@ -821,39 +821,41 @@ git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --
 
 
 ## Special case: solrconfig.xml has changes
-## Interactively determine if we are going to put it in or not
-if [ `grep "solrconfig.xml  *|" $diff_file |awk '{ print $3 }'` -gt 0 ]
+if [ `grep -c "solrconfig.xml  *|" $diff_file` -gt 0 ]
 then
-  warnmsg "Warning: solrconfig.xml was provided, and includes changes!"
-  warnmsg "  Acquia usually does NOT provision solrconfig.xml"
-  warnmsg "  Changes follow:"
-  git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --color solrconfig.xml >$tmpout
-  cat $tmpout
-  echo ""
+  ## Interactively determine if we are going to put it in or not
+  if [ `grep "solrconfig.xml  *|" $diff_file |awk '{ print $3 }'` -gt 0 ]
+  then
+    warnmsg "Warning: solrconfig.xml was provided, and includes changes!"
+    warnmsg "  Acquia usually does NOT provision solrconfig.xml"
+    warnmsg "  Changes follow:"
+    git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --color solrconfig.xml >$tmpout
+    cat $tmpout
+    echo ""
 
-  # Prompt for next step
-  PS3='Please select from the options below: '
-  options=("Accept the changes AND continue" "Omit this file AND add a note to the attached diff file AND continue" "Reject file AND stop script AND show a canned response")
-  select opt in "${options[@]}"
-  do
-    case $opt in
-      "Accept the changes AND continue")
-        next_step=continue
-        break;
-        ;;
-      "Omit this file AND add a note to the attached diff file AND continue")
-        # Remove file
-        rm solrconfig.xml
-        # Re-calculate diff
-        echo "" >$diff_file
-        echo "NOTE: solrconfig.xml was submitted but REMOVED during this process." >$diff_file
-        git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
+    # Prompt for next step
+    PS3='Please select from the options below: '
+    options=("Accept the changes AND continue" "Omit this file AND add a note to the attached diff file AND continue" "Reject file AND stop script AND show a canned response")
+    select opt in "${options[@]}"
+    do
+      case $opt in
+        "Accept the changes AND continue")
+          next_step=continue
+          break;
+          ;;
+        "Omit this file AND add a note to the attached diff file AND continue")
+          # Remove file
+          rm solrconfig.xml
+          # Re-calculate diff
+          echo "" >$diff_file
+          echo "NOTE: solrconfig.xml was submitted but REMOVED during this process." >$diff_file
+          git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
 
-        next_step=continue
-        break;
-        ;;
-      "Reject file AND stop script AND show a canned response")
-          cat <<EOF >$ticket_response_file
+          next_step=continue
+          break;
+          ;;
+        "Reject file AND stop script AND show a canned response")
+            cat <<EOF >$ticket_response_file
 Hello,
 
 Unfortunately, you have included changes to \`solrconfig.xml\` which would negatively impact the underlying architecture of your Solr instance ${core} (running Solr ${solr_full_version}).
@@ -875,16 +877,17 @@ If you require documentation on setting up a local Solr instance (version ${solr
 
 EOF
 
-        # Interactive/automatic ticket reply
-        ticket_reply_interactive $zendesk_ticket $ticket_response_file $tmpout public
+          # Interactive/automatic ticket reply
+          ticket_reply_interactive $zendesk_ticket $ticket_response_file $tmpout public
 
-        exit 0;
-        break;
-        ;;
-      *) echo invalid option;;
-    esac
-  done
+          exit 0;
+          break;
+          ;;
+        *) echo invalid option;;
+      esac
+    done
 
+  fi
 fi
 
 #####################################
