@@ -1112,11 +1112,11 @@ EOF
 fi
 
 # Do pinging
+header "Waiting for Solr core to restart in master and slave"
 if [ "${NO_PING:-x}" -eq 1 ]
 then
   warnmsg "--no-ping argument given, skipping this check."
 else
-  header "Waiting for Solr core to restart in master and slave"
   aswaitforcycle $core
   echo "Pinging done!"
 fi
