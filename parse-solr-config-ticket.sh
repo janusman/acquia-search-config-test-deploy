@@ -163,10 +163,10 @@ do
 done
 
 # Rename any schema.txt files to schema.xml (if there are no schema.xml files already)
-if [ `find -name schema.txt |wc -l` -eq 1 -a `find -name schema.xml |wc -l` -eq 0 ]
+if [ `find -name schema.txt -o -name schema_xml.txt |wc -l` -eq 1 -a `find -name schema.xml |wc -l` -eq 0 ]
 then
-  echo "Found schema.txt ... renaming to schema.xml"
-  find -name schema.txt -exec mv {} schema.xml \;
+  echo "Found schema.txt/schema_xml.txt... renaming to schema.xml"
+  find -name schema.txt -o -name schema_xml.txt -exec mv {} schema.xml \;
 fi
 
 
