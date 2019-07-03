@@ -393,34 +393,57 @@ do
   fi
 done
 
+function install_governor_cli() {
+  echo "  ${COLOR_YELLOW}Installing governor.phar tool...${COLOR_NONE}"
+  cur_folder=`pwd`
+  cd $BASE_DIR/install
+  
+  if [ ! -r acquia-search-governor-php/vendor/acquia/acquia-sdk-php-rest ]
+  then
+    git clone git@github.com:acquia/acquia-search-governor-php.git
+    cd acquia-search-governor-php
+    composer install
+    # Patch as per https://patch-diff.githubusercontent.com/raw/acquia/acquia-sdk-php/pull/79
+    cd ./vendor/acquia/acquia-sdk-php-rest
+    wget https://patch-diff.githubusercontent.com/raw/acquia/acquia-sdk-php/pull/79.diff
+    patch -p2 <79.diff
+  fi
+  # Add the command
+  cat <<EOF >$PATH_TO_GOVERNOR_PHAR
+#!/bin/bash
+php $BASE_DIR/install/acquia-search-governor-php/bin/governor.php \$@
+EOF
+  chmod +x $PATH_TO_GOVERNOR_PHAR
+  cd $cur_folder
+}
+
 # Governor cli tool
-where=`which governor.phar`
-if [ $? -eq 0 ]
-then
-  cp $where $PATH_TO_GOVERNOR_PHAR 2>/dev/null
-fi
+#where=`which governor.phar`
+#if [ $? -eq 0 ]
+#then
+#  cp $where $PATH_TO_GOVERNOR_PHAR 2>/dev/null
+#fi
 
 if [ ! -r $PATH_TO_GOVERNOR_PHAR ]
 then
   errmsg "Requirement: Can't find $PATH_TO_GOVERNOR_PHAR!"
-  errmsg "  1) Download from here: https://confluence.acquia.com/display/support/Install+the+governor.phar+commandline+tool"
-  errmsg "  2) Place governor.phar file into $PATH_TO_GOVERNOR_PHAR"
+  # Install it!
+  install_governor_cli
+fi
+
+if [ `governor-cli --no-ansi |grep -c Options` -lt 1 ]
+then
+  errmsg "Can't seem to execute php $PATH_TO_GOVERNOR_PHAR, check settings!"
   ok=0
 else
-  if [ `governor-cli --no-ansi |grep -c Options` -lt 1 ]
+  # Check that the credentials are in place
+  if [ ! -r $HOME/.Acquia/auth/governor.json ]
   then
-    errmsg "Can't seem to execute php $PATH_TO_GOVERNOR_PHAR, check settings!"
+    errmsg "Requirement: Can't find stored public/private key for governor.phar"
+    errmsg "  1) RUN this command from the commandline:"
+    errmsg "     $PATH_TO_GOVERNOR_PHAR colony:list"
+    errmsg "  2) When prompted for private/public key, enter credentials from https://cci.acquia.com/node/4491726"
     ok=0
-  else
-    # Check that the credentials are in place
-    if [ ! -r $HOME/.Acquia/auth/governor.json ]
-    then
-      errmsg "Requirement: Can't find stored public/private key for governor.phar"
-      errmsg "  1) RUN this command from the commandline:"
-      errmsg "     $PATH_TO_GOVERNOR_PHAR colony:list"
-      errmsg "  2) When prompted for private/public key, enter credentials from https://cci.acquia.com/node/4491726"
-      ok=0
-    fi
   fi
 fi
 
@@ -441,7 +464,7 @@ do
     then
       url=http://archive.apache.org/dist/lucene/solr/4.5.1/solr-4.5.1.tgz
     fi
-    echo "  Installing Solr v$solr_version from $url..."
+    echo "  ${COLOR_YELLOW}Installing Solr v$solr_version from $url...${COLOR_NONE}"
 
     # Download, uncompress and get rid of tmp file.
     curl $url -o /tmp/download.tgz
