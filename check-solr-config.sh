@@ -115,6 +115,7 @@ function ascopyconf() {
 
 # Wait until a core comes down and then back up.
 function aswaitforcycle() {
+  core=$1
   cat $tmpout_governor_ping |php -r '
   function wait_down_up($url) {
     echo "Waiting for instance at $url to Cycle (come down and back up)\n";
@@ -136,11 +137,44 @@ function aswaitforcycle() {
     echo "\n  Instance currently DOWN. Waiting for it to come UP: ";
 
     # Pause and check again until DOWN
+    $wait = 0.2; # Seconds
+    $timeout = 60; # Seconds
     while (!$up) {
       $up = solr_json_ping($url);
-      usleep(200000);
+      usleep($wait*1000000);
       echo ".";
       $x++; if ($x%50 == 0) { print "."; }
+      if ($x * $wait > $timeout) {
+        die("ERROR: Core at $url did not come up after " . intval($x*$wait) . " seconds. You can try to fix it below:
+
+#
+# See https://runbook.ops.acquia.com/master/alerts/search_index_mon/
+#
+# Run this while SSHd onto the java* server as the [region] user
+#
+
+ahssh javaephem-788.search-service.hosting.acquia.com
+sudo su euwest1as
+CORE='$core'
+cd
+curl -sS \"http://localhost:8081/solr/admin/cores?action=UNLOAD&core=boot-\${CORE}\"
+rake update_subscription_data client=\${CORE} && rake client_force_reload client=\${CORE} >/tmp/restart.txt
+if [ `grep -c \"Call to CoreAdmin API failed with code 500\" /tmp/restart.txt` -gt 0 ]
+then
+  cat <<EOF
+Found error when reloading core! See /tmp/restart.txt
+
+If still an issue, you can run this ONLY ON Javaephem
+
+  #rm -r /var/www/html/`whoami`.*/docroot/files/indexes/\$CORE
+  #curl \"http://localhost:8081/solr/admin/cores?action=UNLOAD&core=boot-\$CORE&deleteIndex=true\"
+EOF
+else
+  echo \"You can now run: rake cron  ... NOTE this can take a LONG time.\"
+  # IF Cron refuses to run, you can try: rake cron_unlock && rake cron
+fi
+");
+      }
     }
     echo "\n  Instance UP. Finished this check.\n\n";
 
@@ -809,7 +843,14 @@ cat $tmpout_errors >>$ticket_response_file
 cat <<EOF >>$ticket_response_file
 \`\`\`
 
-Can you please verify this file? We recommend you check it does work and causes the behavior you intended in a local Solr instance.
+After you correct any errors, please re-attach all changed files to the ticket.
+
+Note that you can obtain the current Solr configuration files at any time via Drupal, using either of these methods:
+
+* If using apachesolr.module: go to \`/admin/reports/apachesolr/\` and click on a server. Then, use the "Configuration Files" tab to access the Solr configuration files.
+* If using search_api_solr.module: go to \`/admin/config/search/search_api\` and click on a server name. Then, use the "Files" tab to access the Solr configuration files.
+
+We recommend you check it does work and causes the behavior you intended in a local Solr instance. If you require documentation on setting up a local Solr instance for testing, please see: https://support.acquia.com/hc/en-us/articles/360004423034-How-to-test-a-custom-Solr-schema-file-locally
 EOF
 
   # Trigger interactive ticket reply
@@ -832,6 +873,11 @@ header "Index information for $core"
 # Prefetch the URLs needed for pinging for faster up/down check later
 governor-cli index:ping $core >$tmpout_governor_ping
 governor-cli index:info $core >$tmpout_governor
+# Get Solr version
+cat $tmpout_governor |php -r '$result = json_decode(trim(stream_get_contents(STDIN))); echo "solr_version=" . (preg_match("/solr.*4/i", $result->colony) ? 4 : 3) . "\n";' >$tmpout2
+. $tmpout2
+echo "Solr version: $solr_version"
+solr_full_version=`solrfullversion $solr_version`
 if [ $? -gt 0 ]
 then
   errmsg "Error!"
@@ -925,7 +971,10 @@ then
   ## Interactively determine if we are going to put it in or not
   if [ `grep "solrconfig.xml  *|" $diff_file |awk '{ print $3 }'` -gt 0 ]
   then
-    warnmsg "Warning: solrconfig.xml was provided, and includes changes!"
+    echo ""
+    warnmsg "************************************************************************"
+    warnmsg "* Warning: solrconfig.xml was provided, and includes changes!          *"
+    warnmsg "************************************************************************"
     warnmsg "  Acquia usually does NOT provision solrconfig.xml"
     warnmsg "  Changes follow:"
     git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --color solrconfig.xml >$tmpout
@@ -933,8 +982,9 @@ then
     echo ""
 
     # Prompt for next step
-    PS3='Please select from the options below: '
-    options=("Accept the changes AND continue" "Omit this file AND add a note to the attached diff file AND continue" "Reject file AND stop script AND show a canned response")
+    PS3='Please select from the options below. (NOTE: You can also hit CTRL-C, delete the solrconfig.xml file and re-run this script): '
+    #options=("Accept the changes AND continue" "Omit this file AND add a note to the attached diff file AND continue" "Reject file AND stop script AND show a canned response")
+    options=("Accept the changes AND continue" "Reject file AND stop script AND show a canned response")
     select opt in "${options[@]}"
     do
       case $opt in
@@ -942,17 +992,18 @@ then
           next_step=continue
           break;
           ;;
-        "Omit this file AND add a note to the attached diff file AND continue")
-          # Remove file
-          rm solrconfig.xml
-          # Re-calculate diff
-          echo "" >$diff_file
-          echo "NOTE: solrconfig.xml was submitted but REMOVED during this process." >$diff_file
-          git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
+        #"Omit this file AND add a note to the attached diff file AND continue")
+        #  # Restore file
+        #  patch -p1 <$tmpout
+        #  #rm solrconfig.xml
+        #  # Re-calculate diff
+        #  echo "" >$diff_file
+        #  echo "NOTE: solrconfig.xml was submitted but REMOVED during this process." >$diff_file
+        #  git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --color=never >>$diff_file
 
-          next_step=continue
-          break;
-          ;;
+        #  next_step=continue
+        #  break;
+        #  ;;
         "Reject file AND stop script AND show a canned response")
             cat <<EOF >$ticket_response_file
 Hello,
@@ -1017,10 +1068,6 @@ echo ""
 #####################################
 header "Test configuration changes in Local Solr"
 
-# Get Solr version
-cat $tmpout_governor |php -r '$result = json_decode(trim(stream_get_contents(STDIN))); echo "solr_version=" . (preg_match("/solr.*4/i", $result->colony) ? 4 : 3) . "\n";' >$tmpout2
-. $tmpout2
-echo "Solr version: $solr_version"
 solr_dir=`solrfolder 3`
 if [ $solr_version -eq 4 ]
 then
@@ -1031,7 +1078,6 @@ fi
 echo "Putting configuration into solr local instance at $solr_dir."
 cd $solr_dir/example
 solrconf_folder=solr/conf
-solr_full_version=`solrfullversion $solr_version`
 if [ $solr_version -eq 4 ]
 then
   solrconf_folder=solr/collection1/conf
