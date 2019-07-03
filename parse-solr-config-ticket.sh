@@ -19,7 +19,8 @@ then
 fi
 
 ticket=$1
-tmpout=/tmp/output.json
+tmpout=/tmp/$$.output.json
+tmpout_errors=/tmp/$$.errors.tmp
 CREDS_FILE=creds.txt
 
 if [ ! -r creds.txt ]
@@ -188,3 +189,5 @@ echo ""
 echo "  Or, you can process all cores now by typing this:"
 echo "      cd z${ticket}; ./run-all"
 echo "$COLOR_NONE"
+
+rm $tmpout $tmpout_errors 2>/dev/null
