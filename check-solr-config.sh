@@ -122,7 +122,8 @@ function aswaitforcycle() {
     # Check up
     $up = solr_json_ping($url);
     if (!$up) {
-      die("ERROR: Instance at $url wasnt up at beginning of check!");
+      echo "ERROR: Instance at $url wasnt up at beginning of check!\n";
+      exit(1);
     }
     echo "  Instance currently UP. Waiting for it to come DOWN: ";
 
@@ -145,35 +146,8 @@ function aswaitforcycle() {
       echo ".";
       $x++; if ($x%50 == 0) { print "."; }
       if ($x * $wait > $timeout) {
-        die("ERROR: Core at $url did not come up after " . intval($x*$wait) . " seconds. You can try to fix it below:
-
-#
-# See https://runbook.ops.acquia.com/master/alerts/search_index_mon/
-#
-# Run this while SSHd onto the java* server as the [region] user
-#
-
-ahssh javaephem-788.search-service.hosting.acquia.com
-sudo su euwest1as
-CORE='$core'
-cd
-curl -sS \"http://localhost:8081/solr/admin/cores?action=UNLOAD&core=boot-\${CORE}\"
-rake update_subscription_data client=\${CORE} && rake client_force_reload client=\${CORE} >/tmp/restart.txt
-if [ `grep -c \"Call to CoreAdmin API failed with code 500\" /tmp/restart.txt` -gt 0 ]
-then
-  cat <<EOF
-Found error when reloading core! See /tmp/restart.txt
-
-If still an issue, you can run this ONLY ON Javaephem
-
-  #rm -r /var/www/html/`whoami`.*/docroot/files/indexes/\$CORE
-  #curl \"http://localhost:8081/solr/admin/cores?action=UNLOAD&core=boot-\$CORE&deleteIndex=true\"
-EOF
-else
-  echo \"You can now run: rake cron  ... NOTE this can take a LONG time.\"
-  # IF Cron refuses to run, you can try: rake cron_unlock && rake cron
-fi
-");
+        echo "ERROR: Core at $url did not come up after " . intval($x*$wait) . " seconds.\n";
+        exit(1);
       }
     }
     echo "\n  Instance UP. Finished this check.\n\n";
@@ -1263,7 +1237,35 @@ then
   warnmsg "--no-ping argument given, skipping this check."
 else
   aswaitforcycle $core
-  echo "Pinging done!"
+  if [ $? -eq 0 ]
+  then
+    echo "Pinging done!"
+  else
+    echo "${COLOR_RED}Pinging failed! You can use the below commands to attempt repair"
+    cat $tmpout_governor |php -r '$result = json_decode(trim(stream_get_contents(STDIN)));
+$core=$result->index_id;
+$master=$result->master;
+$slave=reset($result->slaves);
+$user=$result->unix_username;
+
+  echo <<<HEREDOC
+# Fix master:
+#   Copy this oneliner into your terminal.
+ssh -F \$HOME/.ssh/ah_config {$master} "sudo -u {$user} bash -c \"cd && rake update_subscription_data && rake client_force_reload client={$core} && rake cron\""
+
+# Fix slave:
+#
+# STEP 1) SSH IN with this command...
+ssh -F \$HOME/.ssh/ah_config {$slave}
+
+#
+# STEP 2) ... Then copy-paste these into the commandline...
+sudo su {$user}
+cd && rake update_subscription_data && curl -sS "http://localhost:8081/solr/admin/cores?action=UNLOAD&core=boot-{$core}" && rake client_force_reload client={$core} && rake cron
+HEREDOC;
+'
+    echo "${COLOR_NONE}"
+  fi
 fi
 
 # Output canned response
