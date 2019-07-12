@@ -711,7 +711,7 @@ if [ -d $files ]
 then
   echo "Using files from folder $files..."
   ls $files
-  files=`find $files -type f`
+  files=`find $files -type f |fgrep -v .git`
 fi
 
 # Check that incoming files are UTF-8
