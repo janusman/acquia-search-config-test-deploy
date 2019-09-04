@@ -401,6 +401,12 @@ do
   fi
 done
 
+# Do some maintenance to keep temp folders manageable
+header "Housekeeping..."
+echo "Deleting old tmp/ folders (>10 days)"
+find $BASE_DIR/tmp -maxdepth 1 -type d -mtime +10 -name 'check-config-tmp-*' -print -exec rm -rf "{}" \;
+
+
 function install_governor_cli() {
   echo "  ${COLOR_YELLOW}Installing governor.phar tool...${COLOR_NONE}"
   cur_folder=`pwd`
