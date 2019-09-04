@@ -162,13 +162,16 @@ do
   fi
 done
 
-# Rename any schema.txt files to schema.xml (if there are no schema.xml files already)
-if [ `find -name schema.txt -o -name schema_xml.txt |wc -l` -eq 1 -a `find -name schema.xml |wc -l` -eq 0 ]
-then
-  echo "Found schema.txt/schema_xml.txt... renaming to schema.xml"
-  find -name schema.txt -o -name schema_xml.txt -exec mv {} schema.xml \;
-fi
-
+# Rename any schema/elevate.txt files to [filename].xml (if there are no previous .xml files already)
+for name in schema elevate schema_extra_types schema_extra_fields
+do
+  if [ `find -name ${name}.txt -o -name ${name}_xml.txt |wc -l` -eq 1 -a `find -name $name.xml |wc -l` -eq 0 ]
+  then
+    echo "Correcting file extension for ${name}.xml:"
+    find . -name ${name}.txt -exec mv --verbose {} ${name}.xml \;
+    find . -name ${name}_xml.txt -exec mv --verbose  {} ${name}.xml \;
+  fi
+done
 
 cd ..
 header "DONE"
