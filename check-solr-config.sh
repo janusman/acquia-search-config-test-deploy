@@ -524,6 +524,7 @@ AUTO_COMMENT=0
 AUTO_WAIT_GOVERNOR=0
 NO_COMMENT=0
 NO_PING=0
+IGNORE_BAD_UTF=0
 while [[ $# -gt 0 ]]
 do
   key="$1"
@@ -560,6 +561,9 @@ do
       ;;
     --no-ping|--noping)
       NO_PING=1;
+      ;;
+    --disable-utf-error)
+      IGNORE_BAD_UTF=1;
       ;;
     --*)
       # error unknown (long) option $1
@@ -749,8 +753,13 @@ do
       cat $file |php -r '$str = stream_get_contents(STDIN); $is_utf = mb_detect_encoding($str, "UTF-8", TRUE); exit ($is_utf ? 0 : 1);'
       if [ $? -eq 1 ]
       then
-        errmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM)"
-        error=1
+        if [ $IGNORE_BAD_UTF -eq 0 ]
+        then
+          errmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM). Use the --disable-utf-error flag to downgrade this error to a warning."
+          error=1
+        else
+          warnmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM)"
+        fi
       fi
       # Check for BOM in file
       cat $file | php -r '$str = stream_get_contents(STDIN); $has_bom = false; $bom = pack("CCC", 0xef, 0xbb, 0xbf); if (0 === strncmp($str, $bom, 3)) { $has_bom = true; } exit ($has_bom ? 1 : 0);'
