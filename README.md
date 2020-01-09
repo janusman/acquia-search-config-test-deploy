@@ -11,3 +11,5 @@ This repo consists of 2 tools:
 * `check-solr-config.sh`: Main script that does actual testing/deployment of config files into Solr.
 
 Run each script for more help :)
+
+See: https://confluence.acquia.com/display/AS/Solr+Configuration+Deployment
