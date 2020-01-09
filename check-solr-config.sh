@@ -627,9 +627,13 @@ ${COLOR_YELLOW}Usage:${COLOR_NONE}
   $0 zd-ticket-number index-id "file1 file2 file3" [options]
 
 Options:
-     [--no-deploy] : Skips the deployment steps.
-       [--no-ping] : Skips checking if the Solr core cycles (comes down and back up).
-  [--auto-comment] : Auto-posts public comment to Ticket if everything looks OK.
+         [--no-deploy] : Skips the deployment steps.
+           [--no-ping] : Skips checking if the Solr core cycles (comes down and back up).
+        [--no-comment] : Skip posting any comments.
+      [--auto-comment] : Auto-posts public comment to Ticket if everything looks OK.
+[--auto-wait-governor] : Automatically wait for governor queue to come down before continuing.
+ [--disable-utf-error] : Skip UTF-8 checks in config files.
+
 
 ${COLOR_YELLOW}Examples:${COLOR_NONE}
   ${COLOR_GRAY}# Check synonyms.txt from current folder, ticket Z123456, for core WXYZ-12345.dev.default${COLOR_NONE}
