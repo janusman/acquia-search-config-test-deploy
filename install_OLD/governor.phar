@@ -1,2 +1,0 @@
-#!/bin/bash
-php /home/alejandrogarza/Dev/acquia-search-config-test-deploy/install/acquia-search-governor-php/bin/governor.php $@
