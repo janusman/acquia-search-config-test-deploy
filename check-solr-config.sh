@@ -88,7 +88,7 @@ function ascopyconf() {
     return
   fi
   dest="$1-conf"
-  if [ -r $dest ]
+  if [ -r "$dest" ]
   then
     echo "Error: folder $dest already exists"
     return 1
@@ -234,7 +234,8 @@ function deploy_files_into_governor() {
   CODE_file=$PATH_TO_GUV_COPY_MODULE
   REMOTE_site_env=guvannuh.prod
   XFER_foldername="xferfolder-$$"
-  LOCAL_xfer_root=/mnt/tmp
+  # Make a local tmp folder
+  LOCAL_xfer_root=`mktemp -d`
   LOCAL_xfer_folder=${LOCAL_xfer_root}/${XFER_foldername}
   mkdir $LOCAL_xfer_folder 2>/dev/null
 
@@ -276,7 +277,8 @@ function deploy_files_into_governor() {
     );
     ';
 
-  rm -rf $LOCAL_xfer_folder
+  # Remove local folder
+  rm -rf $LOCAL_xfer_root
 }
 
 
@@ -391,7 +393,7 @@ function get_governor_queue_length() {
 # Run requirements checks
 ok=1
 # Commands needed
-for command in php java file watch curl drush wget
+for command in php java file watch curl drush mktemp
 do
   which $command >/dev/null
   if [ $? -gt 0 ]
@@ -420,8 +422,10 @@ function install_governor_cli() {
     composer install
     # Patch as per https://patch-diff.githubusercontent.com/raw/acquia/acquia-sdk-php/pull/79
     cd ./vendor/acquia/acquia-sdk-php-rest
-    wget https://patch-diff.githubusercontent.com/raw/acquia/acquia-sdk-php/pull/79.diff
+    echo -n "Downloading and applying patch..."
+    curl -s https://patch-diff.githubusercontent.com/raw/acquia/acquia-sdk-php/pull/79.diff -o 79.diff
     patch -p2 <79.diff
+    echo " done!"
   fi
   # Add the command
   cat <<EOF >$PATH_TO_GOVERNOR_PHAR
