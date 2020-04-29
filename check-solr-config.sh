@@ -391,7 +391,7 @@ function get_governor_queue_length() {
 # Run requirements checks
 ok=1
 # Commands needed
-for command in php java file watch curl drush
+for command in php java file watch curl drush wget
 do
   which $command >/dev/null
   if [ $? -gt 0 ]
@@ -410,6 +410,7 @@ find $BASE_DIR/tmp -maxdepth 1 -type d -mtime +10 -name 'check-config-tmp-*' -pr
 function install_governor_cli() {
   echo "  ${COLOR_YELLOW}Installing governor.phar tool...${COLOR_NONE}"
   cur_folder=`pwd`
+  mkdir $BASE_DIR/install 2>/dev/null
   cd $BASE_DIR/install
   
   if [ ! -r acquia-search-governor-php/vendor/acquia/acquia-sdk-php-rest ]
@@ -494,7 +495,7 @@ do
     if [ $solr_version = 3 ]
     then
       # Solr 3
-      rsync -e "ssh -F $HOME/.ssh/ah_config" -rltDz --rsync-path="/usr/bin/sudo /usr/bin/rsync" javasrv-474.search-service.hosting.acquia.com:/vol/backup-ebs/gfs/uswest2ass125m/tomcat6/webapps/solr/WEB-INF/lib ${solr_dir}/example/solr
+      rsync -e "ssh -F $HOME/.ssh/ah_config" -rltDz --rsync-path="/usr/bin/sudo /usr/bin/rsync" javasrv-71.search-service.hosting.acquia.com:/vol/backup-ebs/gfs/useast1ass2m/tomcat6/webapps/solr/WEB-INF/lib ${solr_dir}/example/solr
     else
       # Solr 4
       rsync -e "ssh -F $HOME/.ssh/ah_config" -rltDz --rsync-path="/usr/bin/sudo /usr/bin/rsync" javasrv-253.search-service.hosting.acquia.com:/vol/backup-ebs/gfs/useast1ass73m/tomcat6/webapps/solr/WEB-INF/lib ${solr_dir}/example/solr
@@ -866,6 +867,14 @@ header "Index information for $core"
 # Prefetch the URLs needed for pinging for faster up/down check later
 governor-cli index:ping $core >$tmpout_governor_ping
 governor-cli index:info $core >$tmpout_governor
+
+# If no core, report and exit
+if [ `grep -ci "Not Found" $tmpout_governor_ping` -gt 0 ]
+then
+  errmsg "Core $core not found in Governor. It could be unpublished or does not exist."
+  exit 1
+fi
+
 # Get Solr version
 cat $tmpout_governor |php -r '$result = json_decode(trim(stream_get_contents(STDIN))); echo "solr_version=" . (preg_match("/solr.*4/i", $result->colony) ? 4 : 3) . "\n";' >$tmpout2
 . $tmpout2
