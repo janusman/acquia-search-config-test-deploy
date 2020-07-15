@@ -530,6 +530,8 @@ AUTO_WAIT_GOVERNOR=0
 NO_COMMENT=0
 NO_PING=0
 IGNORE_BAD_UTF=0
+IGNORE_SOLRCONFIG_WARNING=0
+SKIP_CHECK_XML=0
 while [[ $# -gt 0 ]]
 do
   key="$1"
@@ -569,6 +571,12 @@ do
       ;;
     --disable-utf-error)
       IGNORE_BAD_UTF=1;
+      ;;
+    --disable-xml-check)
+      SKIP_CHECK_XML=1;
+      ;;
+    --ignore-solrconfig-warning)
+      IGNORE_SOLRCONFIG_WARNING=1;
       ;;
     --*)
       # error unknown (long) option $1
@@ -614,6 +622,8 @@ cat <<EOF
           no-comment: $NO_COMMENT
              no-ping: $NO_PING
   auto-wait-governor: $AUTO_WAIT_GOVERNOR
+   disable-utf-error: $IGNORE_BAD_UTF
+  ignore-solrconfig-warning: $IGNORE_SOLRCONFIG_WARNING
 EOF
 
 # Output help if no index or files
@@ -638,6 +648,7 @@ Options:
       [--auto-comment] : Auto-posts public comment to Ticket if everything looks OK.
 [--auto-wait-governor] : Automatically wait for governor queue to come down before continuing.
  [--disable-utf-error] : Skip UTF-8 checks in config files.
+[--ignore-solrconfig-warning] : Skip warning and stopping for solrconfig.xml changes.
 
 
 ${COLOR_YELLOW}Examples:${COLOR_NONE}
@@ -783,7 +794,7 @@ do
       fi
       # For xml files, check the syntax.
       extension=`echo $file |awk -F. '{ print $NF }'`
-      if [ ${extension:-x} = xml ]
+      if [ ${extension:-x} = xml -a ${SKIP_CHECK_XML} = 0 ]
       then
         php -r '$is_xml=@simplexml_load_file("'$file'"); exit ($is_xml ? 0 : 1);'
         if [ $? -eq 1 ]
@@ -972,7 +983,7 @@ git diff HEAD^ HEAD --ignore-all-space --ignore-blank-lines --patch-with-stat --
 
 
 ## Special case: solrconfig.xml has changes
-if [ `grep -c "solrconfig.xml  *|" $diff_file` -gt 0 ]
+if [ `grep -c "solrconfig.xml  *|" $diff_file` -gt 0 -a ${IGNORE_SOLRCONFIG_WARNING:-0} -eq 0 ]
 then
   ## Interactively determine if we are going to put it in or not
   if [ `grep "solrconfig.xml  *|" $diff_file |awk '{ print $3 }'` -gt 0 ]
