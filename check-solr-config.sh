@@ -393,7 +393,7 @@ function get_governor_queue_length() {
 # Run requirements checks
 ok=1
 # Commands needed
-for command in php java file watch curl drush mktemp composer git
+for command in php java file curl drush mktemp composer git
 do
   which $command >/dev/null
   if [ $? -gt 0 ]
