@@ -403,6 +403,13 @@ do
   fi
 done
 
+# Check Java version
+if [ `java -version 2>&1 |grep -c 'build [0-9]'` -eq 0 ]
+then
+  errmsg "Requirement: Java is not installed! Please install it. Instructions: https://www.java.com/en/download/help/download_options.html"
+  exit 1
+fi
+
 # Do some maintenance to keep temp folders manageable
 header "Housekeeping..."
 echo "Deleting old tmp/ folders (>10 days)"
@@ -761,73 +768,73 @@ do
     if [ `file $file | grep -c 'empty'` -eq 1 ]
     then
       warnmsg "WARNING: $file is an empty file"
-    else
+    fi
 
-      # Flag what could be wrong extensions
-      if [ `php -r 'echo substr_count(basename("'$file'"), ".");'` -gt 1 ]
+    # Flag what could be wrong extensions
+    if [ `php -r 'echo substr_count(basename("'$file'"), ".");'` -gt 1 ]
+    then
+      warnmsg "WARNING: $file may have wrong extension!"
+    fi
+
+    # Check file encoding is UTF (or something that passes for UTF)
+    cat $file |php -r '$str = stream_get_contents(STDIN); $is_utf = mb_detect_encoding($str, "UTF-8", TRUE); exit ($is_utf ? 0 : 1);'
+    if [ $? -eq 1 ]
+    then
+      if [ $IGNORE_BAD_UTF -eq 0 ]
       then
-        warnmsg "WARNING: $file may have wrong extension!"
+        errmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM). Use the --disable-utf-error flag to downgrade this error to a warning."
+        error=1
+      else
+        warnmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM)"
       fi
-
-      # Check file encoding is UTF (or something that passes for UTF)
-      cat $file |php -r '$str = stream_get_contents(STDIN); $is_utf = mb_detect_encoding($str, "UTF-8", TRUE); exit ($is_utf ? 0 : 1);'
+    fi
+    # Check for BOM in file
+    cat $file | php -r '$str = stream_get_contents(STDIN); $has_bom = false; $bom = pack("CCC", 0xef, 0xbb, 0xbf); if (0 === strncmp($str, $bom, 3)) { $has_bom = true; } exit ($has_bom ? 1 : 0);'
+    if [ $? -eq 1 ]
+    then
+      warnmsg "Warning: File $file has UTF-8 BOM"
+    fi
+    if [ `file $file | grep -c 'CRLF'` -eq 1 ]
+    then
+      warnmsg "Warning: File $file has CRLF endings (line endings should be LF)"
+      #error=1
+    fi
+    # For xml files, check the syntax.
+    extension=`echo $file |awk -F. '{ print $NF }'`
+    if [ ${extension:-x} = xml -a ${SKIP_CHECK_XML} = 0 ]
+    then
+      php -r '$is_xml=@simplexml_load_file("'$file'"); exit ($is_xml ? 0 : 1);'
       if [ $? -eq 1 ]
       then
-        if [ $IGNORE_BAD_UTF -eq 0 ]
+        errmsg "ERROR: File $file is not valid XML."
+        # Run xmllint if available
+        which xmllint >/dev/null 2>&1
+        if [ $? -eq 0 ]
         then
-          errmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM). Use the --disable-utf-error flag to downgrade this error to a warning."
-          error=1
-        else
-          warnmsg "ERROR: File $file is not UTF-8-encoded, should be UTF-8 (without BOM)"
+          echo "XML checker flagged these errors:" >>$tmpout_errors
+          xmllint $file >>$tmpout_errors 2>&1
+          echo "---------------------------------" >>$tmpout_errors
         fi
+        error=1
       fi
-      # Check for BOM in file
-      cat $file | php -r '$str = stream_get_contents(STDIN); $has_bom = false; $bom = pack("CCC", 0xef, 0xbb, 0xbf); if (0 === strncmp($str, $bom, 3)) { $has_bom = true; } exit ($has_bom ? 1 : 0);'
-      if [ $? -eq 1 ]
+    fi
+    #if [ ${extension:-x} = html -o ${extension:-x} = properties -o ${extension:-x} = xsl -o ${extension:-x} = conf ]
+    if [ ${extension:-x} != txt -a ${extension:-x} != xml ]
+    then
+      warnmsg "Warning: File $file WILL BE OMMITTED because of extension (we only accept .txt and .xml files)"
+      copy=0
+    fi
+    # Check synonyms*.txt format (only non-zero-sized files)
+    if [ `echo $file | egrep -c 'synonyms.*txt'` -eq 1 ]
+    then
+      # Do not check syntax for 0-lined files (could be just \r\n)
+      if [ `wc -l $file |cut -f1 -d' '` -gt 1 ]
       then
-        warnmsg "Warning: File $file has UTF-8 BOM"
-      fi
-      if [ `file $file | grep -c 'CRLF'` -eq 1 ]
-      then
-        warnmsg "Warning: File $file has CRLF endings (line endings should be LF)"
-        #error=1
-      fi
-      # For xml files, check the syntax.
-      extension=`echo $file |awk -F. '{ print $NF }'`
-      if [ ${extension:-x} = xml -a ${SKIP_CHECK_XML} = 0 ]
-      then
-        php -r '$is_xml=@simplexml_load_file("'$file'"); exit ($is_xml ? 0 : 1);'
-        if [ $? -eq 1 ]
+        # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
+        if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
         then
-          errmsg "ERROR: File $file is not valid XML."
-          # Run xmllint if available
-          which xmllint >/dev/null 2>&1
-          if [ $? -eq 0 ]
-          then
-            echo "XML checker flagged these errors:" >>$tmpout_errors
-            xmllint $file >>$tmpout_errors 2>&1
-            echo "---------------------------------" >>$tmpout_errors
-          fi
+          errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that is not a comment, it must use the correct syntax"
           error=1
-        fi
-      fi
-      if [ ${extension:-x} = html -o ${extension:-x} = properties -o ${extension:-x} = xsl -o ${extension:-x} = conf ]
-      then
-        warnmsg "Warning: File $file WILL BE OMMITTED"
-        copy=0
-      fi
-      # Check synonyms*.txt format (only non-zero-sized files)
-      if [ `echo $file | egrep -c 'synonyms.*txt'` -eq 1 ]
-      then
-        # Do not check syntax for 0-lined files (could be just \r\n)
-        if [ `wc -l $file |cut -f1 -d' '` -gt 1 ]
-        then
-          # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
-          if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
-          then
-            errmsg "ERROR: Synonyms file $file doesn't have the correct syntax: If file has at least one line that is not a comment, it must use the correct syntax"
-            error=1
-          fi
         fi
       fi
     fi
@@ -880,13 +887,23 @@ fi
 # Get index information
 header "Index information for $core"
 # Prefetch the URLs needed for pinging for faster up/down check later
-governor-cli index:ping $core >$tmpout_governor_ping
-governor-cli index:info $core >$tmpout_governor
+governor-cli index:ping $core >$tmpout_governor_ping 2>&1
+governor-cli index:info $core >$tmpout_governor 2>&1
 
 # If no core, report and exit
+if [ `grep -ci "Not Found" $tmpout_governor` -gt 0 ]
+then
+  errmsg "Core $core not found in Governor. It could be unpublished or does not exist"
+  exit 1
+fi
 if [ `grep -ci "Not Found" $tmpout_governor_ping` -gt 0 ]
 then
-  errmsg "Core $core not found in Governor. It could be unpublished or does not exist."
+  errmsg "Core $core found in Governor but is currently down (or not fully provisioned)."
+  echo "Governor info:"
+  cat $tmpout_governor 
+  echo "Ping info:"
+  cat $tmpout_governor_ping
+  echo ""
   exit 1
 fi
 
@@ -927,8 +944,9 @@ git add . >/dev/null
 git commit -m "Initial commit" >/dev/null
 
 # Get list of new files that already exist
-ls $newfiles_dir |sort >$tmpdir/new-files-list.txt
+ls $newfiles_dir |sort >$tmpdir/provided-files-list.txt
 ls $origconf_dir |sort >$tmpdir/existing-files-list.txt
+comm -23 $tmpdir/provided-files-list.txt $tmpdir/existing-files-list.txt >$tmpdir/provided-new-files-list.txt
 
 # Copy files into source control and diff
 header "Adding new files from $newfiles_dir and comparing."
@@ -950,8 +968,8 @@ then
   fi
 fi
 
-##
-if [ $changes -eq 0 ]
+## Ensure we check for new files as well as any changes
+if [ $changes -eq 0 -a `grep -c . $tmpdir/provided-new-files-list.txt` -eq 0 ]
 then
   errmsg "No changes detected between current and new configuration!"
   echo
@@ -960,12 +978,21 @@ then
 fi
 
 # There WERE changes, so place files that actually changed to another folder-
-cp `git diff-tree --ignore-all-space --ignore-blank-lines --no-commit-id --name-only -r HEAD` $realfilestoupload_dir
+# 1) Files that changed:
+echo "  .. files that changed:"
+git diff  --ignore-all-space --ignore-blank-lines --numstat HEAD^1 |awk '($1 + $2 >0) { print "    " $3}'
+cp `git diff  --ignore-all-space --ignore-blank-lines --numstat HEAD^1 |awk '($1 + $2 >0) { print $3}'` $realfilestoupload_dir
+# 2) Files that are completely new:
+for nom in `cat $tmpdir/provided-new-files-list.txt`
+do
+  cp $newfiles_dir/$nom $realfilestoupload_dir
+  echo "  .. copied completely new file '$nom'"
+done
 echo "  Copied ONLY the ${COLOR_YELLOW}new and changed${COLOR_NONE} files to $realfilestoupload_dir"
+ls -l $realfilestoupload_dir |awk '{ print "    " $0 }'
 # Generate the list of REAL files that are overwritten and will need to be removed from the Governor before adding them.
 ls $realfilestoupload_dir | sort > $tmpdir/upload-files-list.txt
 comm -12 $tmpdir/upload-files-list.txt $tmpdir/existing-files-list.txt >$tmpdir/overwritten-files-list.txt
-
 
 cat $summary_file
 
@@ -1132,6 +1159,7 @@ if [ $counter -eq $max_time ]
 then
   echo "${COLOR_RED}TIMEOUT at $counter seconds..."
   warnmsg "POSSIBLY the script needs to have more than $max_time seconds to let Solr start up (script detects that Solr finished startup based on the regex '$regex')"
+  pausemsg
   exit 1
 fi
 
