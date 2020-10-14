@@ -137,8 +137,9 @@ find -name "*.zip" -exec sh -c 'echo "FOUND zip file {}; running unzip..."; unzi
 find -name "*.ZIP" -exec sh -c 'echo "FOUND zip file {}; running unzip..."; unzip "{}" && rm "{}"' \;
 find -name "*gz" -exec sh -c 'echo "FOUND gz file {}; running gzip -d..."; gzip -d "{}"' \;
 
-# Remove any __MACOSX folders
+# Remove any __MACOSX folders nad .DS_Store files
 find -type d -name __MACOSX -exec rm -rf {} 2>/dev/null \;
+find -type f -name .DS_Store -exec rm -rf {} 2>/dev/null \;
 
 # Remove trailing _ in files
 for nom in *_
