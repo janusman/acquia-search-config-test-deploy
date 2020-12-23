@@ -35,12 +35,12 @@ PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/install/governor.phar
 PATH_TO_ZD_POST_COMMENT_SCRIPT=${BASE_DIR}/extra/zendesk/post-zendesk-comment.php
 PATH_TO_GUV_COPY_MODULE=${BASE_DIR}/extra/guv_copy/guv_copy.module
 mkdir ${BASE_DIR}/tmp 2>/dev/null
-tmpout=${BASE_DIR}/tmp/check.tmp
-tmpout2=${BASE_DIR}/tmp/check.tmp2
-tmpout_governor=${BASE_DIR}/tmp/check.tmp3
-tmpout_governor_ping=${BASE_DIR}/tmp/check.tmp4
+tmpout=${BASE_DIR}/tmp/check.$$.tmp
+tmpout2=${BASE_DIR}/tmp/check.$$.tmp2
+tmpout_governor=${BASE_DIR}/tmp/check.$$.tmp3
+tmpout_governor_ping=${BASE_DIR}/tmp/check.$$.tmp4
 date=`date +%Y-%m-%d`
-tmpout_errors=${BASE_DIR}/tmp/errors.tmp
+tmpout_errors=${BASE_DIR}/tmp/errors.$$.tmp
 
 # Include ##############
 . $BASE_DIR/functions.sh
@@ -129,17 +129,19 @@ function aswaitforcycle() {
 
     # Pause 0.1 seconds and check again until DOWN
     $x = 0;
+    $wait = 0.1; # Seconds
     while ($up) {
       $up = solr_json_ping($url);
-      usleep(100000);
+      usleep($wait*1000000);
       $x++; if ($x%10 == 0) { print "."; }
     }
+    $total_time = intval($x*$wait);
 
     echo "\n  Instance currently DOWN. Waiting for it to come UP: ";
 
     # Pause and check again until DOWN
     $wait = 0.2; # Seconds
-    $timeout = 60; # Seconds
+    $timeout = 90; # Seconds
     while (!$up) {
       $up = solr_json_ping($url);
       usleep($wait*1000000);
@@ -150,7 +152,8 @@ function aswaitforcycle() {
         exit(1);
       }
     }
-    echo "\n  Instance UP. Finished this check.\n\n";
+    $total_time += intval($x*$wait);
+    echo "\n  Instance UP ($total_time sec total). Finished this check.\n\n";
 
   }
   function solr_json_ping($url) {
@@ -267,7 +270,7 @@ function deploy_files_into_governor() {
   # Deploy into the node
   echo "Calling remote code..."
   #echo '# Drush command: drush @'${REMOTE_site_env}' --uri=https://governor.acquia-search.com ev
-  drush @${REMOTE_site_env} --uri=https://governor.acquia-search.com ev '
+  drush7 @${REMOTE_site_env} --uri=https://governor.acquia-search.com ev '
     $dir = "'${REMOTE_xfer_folder}'";
     include "$dir/guv_copy.module";
     _guv_copy_do_copy_folder_to_coreids(
@@ -414,7 +417,7 @@ fi
 header "Housekeeping..."
 echo "Deleting old tmp/ folders (>10 days)"
 find $BASE_DIR/tmp -maxdepth 1 -type d -mtime +10 -name 'check-config-tmp-*' -print -exec rm -rf "{}" \;
-
+find $BASE_DIR/tmp -maxdepth 1 -type f -mtime +10 -name 'check.*' -print -exec rm -rf "{}" \;
 
 function install_governor_cli() {
   echo "  ${COLOR_YELLOW}Installing governor.phar tool...${COLOR_NONE}"
@@ -1144,7 +1147,7 @@ java -jar start.jar >$solrlog 2>&1 &
 background_pid=$!
 echo -n "${COLOR_YELLOW} waiting..."
 max_time=60
-regex="Registered new searcher|Started SocketConnector@0.0.0.0:8983"
+regex="Registered new searcher"
 for counter in `seq 1 $max_time`
 do
   sleep 1
@@ -1336,6 +1339,7 @@ cd && rake update_subscription_data && curl -sS "http://localhost:8081/solr/admi
 HEREDOC;
 '
     echo "${COLOR_NONE}"
+    pausemsg
   fi
 fi
 
