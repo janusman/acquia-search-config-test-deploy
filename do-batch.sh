@@ -8,6 +8,7 @@
 #   bash do-batch.sh list.txt [ticketnumber]
 infile=${1:-x}
 ticket=${2:-x}
+configfolder=${3:-x}
 if [ ! -r $infile ]
 then
   echo "File $infile does not exit"
@@ -19,6 +20,19 @@ then
   echo "You need to provide a ticket number (i.e. 1234567) as the second argument"
   exit 1
 fi
+
+if [ "$configfolder" = x ]
+then
+  echo "You need to provide a config folder as the 3rd argument"
+  exit 1
+fi
+
+if [ ! -d $configfolder ]
+then
+  echo "Config folder $configfolder does not exit"
+  exit 1
+fi
+
 
 if [ ! -f ./check-solr-config.sh ]
 then
@@ -35,8 +49,8 @@ do
   echo "========="
   #governor.phar index:ping $nom |grep false
   #continue
-  ./check-solr-config.sh $ticket $nom ticketfiles --no-comment --auto-wait-governor
-  if [ $? -gt 0 ]
+  ./check-solr-config.sh $ticket $nom $configfolder --no-comment --auto-wait-governor
+  if [ ${?:-x} -gt 0 ]
   then
     echo "$0: ERROR WHEN RUNNING check-solr-config.sh, stopping script! "`date`
     exit 1
