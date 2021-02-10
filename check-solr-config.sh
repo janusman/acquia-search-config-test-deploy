@@ -1140,6 +1140,7 @@ ln -s $origconf_dir ${solrconf_folder}
 
 solrlog=$tmpdir/${core}-${date}-solr-startup.log
 errlog=$tmpdir/${core}-${date}-solr-startup-errors.log
+echo "Writing Solr log to $solrlog"
 printf "Starting solr ${solr_full_version}..."
 # Log Solr starting output
 java -jar start.jar >$solrlog 2>&1 &
@@ -1147,13 +1148,14 @@ java -jar start.jar >$solrlog 2>&1 &
 background_pid=$!
 echo -n "${COLOR_YELLOW} waiting..."
 max_time=60
-regex="Registered new searcher"
+regex="Registered new searcher|SolrException"
 for counter in `seq 1 $max_time`
 do
   sleep 1
   if [ `tail -200 $solrlog |egrep -c "$regex"` -gt 0 ]
   then
     echo "done in $counter seconds!"
+    sleep 1
     break
   fi
   echo -n '.'
