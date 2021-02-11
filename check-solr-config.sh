@@ -1242,7 +1242,7 @@ else
 fi
 
 # Build summary file.
-echo "Ticket z${zendesk_ticket} |" >$summary_file_with_ticket
+echo "Ticket z${zendesk_ticket} | "`whoami`" |" >$summary_file_with_ticket
 cat $summary_file >>$summary_file_with_ticket
 
 # If NO_DEPLOY, then stop here.
