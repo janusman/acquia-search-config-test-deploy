@@ -1148,7 +1148,7 @@ java -jar start.jar >$solrlog 2>&1 &
 background_pid=$!
 echo -n "${COLOR_YELLOW} waiting..."
 max_time=60
-regex="Registered new searcher|SolrException"
+regex="Registered new searcher"
 for counter in `seq 1 $max_time`
 do
   sleep 1
