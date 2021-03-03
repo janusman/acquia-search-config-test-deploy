@@ -34,6 +34,7 @@ BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PATH_TO_GOVERNOR_PHAR=${BASE_DIR}/install/governor.phar
 PATH_TO_ZD_POST_COMMENT_SCRIPT=${BASE_DIR}/extra/zendesk/post-zendesk-comment.php
 PATH_TO_GUV_COPY_MODULE=${BASE_DIR}/extra/guv_copy/guv_copy.module
+DRUSHCMD=drush
 mkdir ${BASE_DIR}/tmp 2>/dev/null
 tmpout=${BASE_DIR}/tmp/check.$$.tmp
 tmpout2=${BASE_DIR}/tmp/check.$$.tmp2
@@ -191,7 +192,7 @@ function file_to_clipboard() {
 }
 
 function check_governor_access() {
-  if [ `drush sa |grep -c @guvannuh.prod` -eq 0 ]
+  if [ `$DRUSHCMD sa |grep -c @guvannuh.prod` -eq 0 ]
   then
     echo 0
   else
@@ -208,7 +209,7 @@ function asgetgovurl() {
   fi
 
   # Figure out the URL to a particular core on the Governor.
-  drush @guvannuh.prod ev 'function _guv_copy_get_nids_from_core_id($core_id) {
+  $DRUSHCMD @guvannuh.prod ev 'function _guv_copy_get_nids_from_core_id($core_id) {
   $query = new EntityFieldQuery();
   $nodes = $query->entityCondition("entity_type", "node")
     ->entityCondition("bundle", "si_search_core")
@@ -263,14 +264,14 @@ function deploy_files_into_governor() {
   REMOTE_xfer_folder=${REMOTE_xfer_root}/${XFER_foldername}
   tmp=`pwd`
   cd ${LOCAL_xfer_root}
-  tar zcf - $XFER_foldername | drush @${REMOTE_site_env} ssh "tar xvz -C $REMOTE_xfer_root"
+  tar zcf - $XFER_foldername | $DRUSHCMD @${REMOTE_site_env} ssh "tar xvz -C $REMOTE_xfer_root"
   cd $tmp
 
   ########
   # Deploy into the node
   echo "Calling remote code..."
   #echo '# Drush command: drush @'${REMOTE_site_env}' --uri=https://governor.acquia-search.com ev
-  drush7 @${REMOTE_site_env} --uri=https://governor.acquia-search.com ev '
+  $DRUSHCMD @${REMOTE_site_env} --uri=https://governor.acquia-search.com ev '
     $dir = "'${REMOTE_xfer_folder}'";
     include "$dir/guv_copy.module";
     _guv_copy_do_copy_folder_to_coreids(
@@ -396,7 +397,7 @@ function get_governor_queue_length() {
 # Run requirements checks
 ok=1
 # Commands needed
-for command in php java file curl drush mktemp composer git
+for command in php java file curl $DRUSHCMD mktemp composer git
 do
   which $command >/dev/null
   if [ $? -gt 0 ]
@@ -411,6 +412,16 @@ if [ `java -version 2>&1 |grep -c 'build [0-9]'` -eq 0 ]
 then
   errmsg "Requirement: Java is not installed! Please install it. Instructions: https://www.java.com/en/download/help/download_options.html"
   exit 1
+fi
+
+# Check drush version
+if [ `$DRUSHCMD --version 2>&1 |egrep -c '9\.|1[012]\.'` -eq 1 ]
+then
+  warnmsg "WARNING: Your local drush version is drush 9 or higher, which may not work when talking to the Governor."
+  warnmsg "You can edit the script's DRUSHCMD line and add the path to your local drush7 or drush8 command."
+  echo "You can also ignore this warning if you plan to upload configuration manually to the Governor."
+  echo ""
+  pausemsg
 fi
 
 # Do some maintenance to keep temp folders manageable
