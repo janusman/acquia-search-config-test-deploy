@@ -669,6 +669,7 @@ Options:
       [--auto-comment] : Auto-posts public comment to Ticket if everything looks OK.
 [--auto-wait-governor] : Automatically wait for governor queue to come down before continuing.
  [--disable-utf-error] : Skip UTF-8 checks in config files.
+ [--disable-xml-check] : Skip XML check.
 [--ignore-solrconfig-warning] : Skip warning and stopping for solrconfig.xml changes.
 
 
@@ -1159,7 +1160,7 @@ java -jar start.jar >$solrlog 2>&1 &
 background_pid=$!
 echo -n "${COLOR_YELLOW} waiting..."
 max_time=60
-regex="Registered new searcher"
+regex="Registered new searcher|java.net.BindException|java.text.ParseException|SolrDispatchFilter.init.. done"
 for counter in `seq 1 $max_time`
 do
   sleep 1
