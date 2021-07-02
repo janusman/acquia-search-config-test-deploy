@@ -187,11 +187,11 @@ ls *.sh | awk '{print "    " $0 }'
 echo '#!/bin/sh' >run-all
 echo '#auto_comment="--auto-comment" # Uncomment to auto-comment' >>run-all
 echo '#no_deploy="--nodeploy" # Uncomment to auto-comment' >>run-all
-cat *.sh |grep check |awk '{ print $0 " $auto_comment $no_deploy" }' >>run-all
+cat *.sh |grep check |awk '{ print $0 " $auto_comment $no_deploy $@" }' >>run-all
 chmod +x run-all
 echo ""
 echo "  Or, you can process all cores now by typing this:"
-echo "      cd z${ticket}; ./run-all"
+echo "      cd z${ticket}; ./run-all [--no-deploy] [--auto-comment] [...other arguments...]"
 echo "$COLOR_NONE"
 
 rm $tmpout $tmpout_errors 2>/dev/null

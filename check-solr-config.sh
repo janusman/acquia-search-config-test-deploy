@@ -16,7 +16,6 @@
 # * Copies the new specified files over the configuration, and attempts to start Solr
 # * Reports on any Solr warnings or errors found, and provides a canned response
 # * If successful startup, provides links you can click to upload files onto the
-#   Governor, and checks for the real index's coming back up.
 # * Also provides canned response for successful implementation, including a
 #   .diff between previous and new config
 #
@@ -843,7 +842,7 @@ do
     if [ `echo $file | egrep -c 'synonyms.*txt'` -eq 1 ]
     then
       # Do not check syntax for 0-lined files (could be just \r\n)
-      if [ `wc -l $file |cut -f1 -d' '` -gt 1 ]
+      if [ `grep -c . $file |cut -f1 -d' '` -gt 1 ]
       then
         # If file has at least one line that isn't a comment, it must have at least one line with a , or => syntax
         if [ `egrep -c "^[^#]" $file` -gt 0 -a `egrep -c "^[^#]*,|=>" $file` -eq 0 ]
