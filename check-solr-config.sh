@@ -396,7 +396,7 @@ function get_governor_queue_length() {
 # Run requirements checks
 ok=1
 # Commands needed
-for command in php java file curl $DRUSHCMD mktemp composer git
+for command in php java file curl $DRUSHCMD mktemp composer git grep egrep fgrep sed awk
 do
   which $command >/dev/null
   if [ $? -gt 0 ]
